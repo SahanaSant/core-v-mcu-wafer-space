@@ -1,0 +1,32 @@
+# PDK fetched by `make pdk`
+/pdk/
+
+# LibreLane outputs
+runs/
+final/
+*.log
+
+# Generated layout
+gds/
+lef/
+lib/
+spice/
+
+# Simulation
+sim_build/
+__pycache__/
+*.pyc
+*.fst
+*.vcd
+*.xml
+
+# Nix
+result
+result-*
+
+# Editors and OS
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/
