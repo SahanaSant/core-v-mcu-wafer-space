@@ -22,6 +22,13 @@ one upstream source patch this port needed had to go (see ticket 03), and that i
 `i2c_peripheral_interface.v` has a second, uncaught bug a few lines below the patched one:
 the `scl_cnt` branch increments `sda_cnt`, so `scl_cnt` never advances.
 
+**Ticket 11 turned the `apb_i2cs` cut from the cheapest option into a precondition.** The
+committed memory configuration is sixteen SRAM macros at about 2.79 mm2 of floorplan, which
+against ticket 10's 9.76 mm2 of placed logic puts the core at **97% occupancy** on the template's
+35% density. `apb_i2cs` at 11.3% of cell area is worth about 1.10 mm2 placed, taking that to 89%.
+So this peripheral is not on the table any more, and the question narrows to what else goes with
+it. Resolving this ticket by keeping the I2C slave means reopening ticket 11.
+
 Constraints on the answer:
 
 - UART is not negotiable. It is the only practical bring-up and observability path, and it is

@@ -56,6 +56,16 @@ Budget an hour and keep it off the critical path of anything time-boxed. Both `m
 `make sta` take an `SCL=` override, and `flow/synth/latch_map/` holds a map for any library the
 PDK does not ship one for.
 
+Ticket 11 committed the memory and left one standing trap behind it. The configuration is
+**16 KiB of L2: sixteen `gf180mcu_ocd_ip_sram__sram1024x8m8wm1`, two interleaved channels of
+4 KiB plus two private banks of 4 KiB, contiguous from `0x1C00_0000` to `0x1C00_4000`.** The trap
+is that **nothing in `gf180mcu_ocd_ip_sram` was characterised**: every Liberty file is a foundry
+Liberty file with the header swapped and the address bus resized, so its timing, power and
+`area` all describe a different macro. Take macro area from LEF `SIZE`, never from Liberty, where
+the error runs to 3.2x. Never conclude that an OCD macro matches a foundry one on timing, because
+that compares a file with itself. And the `sram1024x8` Verilog specify block, the one piece of
+3.3 V data that exists, is 2x optimistic on access time. Ticket 20 owns all of it.
+
 Standing preferences for this effort:
 
 - **The supply is 3.3 V, single rail, until ticket 18 says otherwise.** Set by ticket 14. The
@@ -212,6 +222,22 @@ signed ECA covering the commit author.
   later ticket has to respect. Gate-level simulation is now pinned to a UDP-capable simulator:
   the ICG model is built on a Verilog primitive, so Verilator is out and the container's
   Icarus 14.0 is in.
+- [11 Memory architecture: how much L2, in how many banks, from which macro?](issues/11-memory-architecture.md)
+  — **16 KiB, sixteen OCD `sram1024x8` macros, two interleaved channels of 4 KiB plus two private
+  banks of 4 KiB, contiguous from `0x1C00_0000`.** 2.49 mm2 of macro, about 2.79 mm2 of array. The
+  private banks survive because the crossbar carrying them also carries the boot ROM, so dropping
+  them would delete two of four ports on a structure that has to stay; the lever is
+  `NB_L2_CHANNELS`, 4 to 2, not the macro size. Shrinking to `512x8` is a trap: 25% worse density
+  cancels the saving and you get 12 KiB in the same floorplan. **Ticket 12's `apb_i2cs` cut is now
+  a precondition**, since logic plus array is 97% of core without it and 89% with. The density
+  claim is measured from LEF and the layout is real, foundry-reviewed and DRC clean under
+  `gf180mcuD`. **The timing claim has nothing behind it**: every OCD Liberty is a foundry Liberty
+  with the header swapped, the repo's own first commit says "timing has not been updated", and the
+  one 3.3 V recharacterisation, in the `sram1024x8` specify block, is **2x optimistic** because the
+  spec CSV row it read has column 1 overwritten by column 5. That opened ticket 20; ticket 21
+  graduates the floorplan; ticket 19 writes the wrappers. Also settled: `L2_BANK_SIZE = 29184`
+  becomes 1024 and agrees with `BANK_SIZE_INTL_SRAM`, and **there is no execute-in-place path**, so
+  external flash never reduces the SRAM requirement.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -225,20 +251,18 @@ signed ECA covering the commit author.
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
 trigger resolves.
 
-- **The remaining technology cells.** Ticket 03 replaced the guess with a measured list and
-  ticket 16 took the clock cells out of it. Four files are left, and each is waiting on a
-  decision rather than on sharpness: `gf180_interleaved_ram.sv` and `gf180_private_ram.sv`
-  from ticket 11, `gf180_bootrom.sv` from ticket 04, and `gf180_clk_gen.sv` from ticket 05,
-  which provides `apb_pll` in its entirety rather than a PLL cell inside it. Pad wrappers
-  have left this patch: nothing in the SoC instantiates a pad cell, so `gf180_pads.sv` is
-  `chip_top` work and graduates with the floorplan.
+- **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
+  16 took the clock cells out of it, and ticket 11 specified the two memories, so
+  `gf180_interleaved_ram.sv` and `gf180_private_ram.sv` are ticket 19 rather than fog. Two files
+  are left, each waiting on a decision rather than on sharpness: `gf180_bootrom.sv` from ticket
+  04, and `gf180_clk_gen.sv` from ticket 05, which provides `apb_pll` in its entirety rather than
+  a PLL cell inside it. Pad wrappers have left this patch: nothing in the SoC instantiates a pad
+  cell, so `gf180_pads.sv` is `chip_top` work and graduates with the floorplan.
 - **Software and the boot image.** Whether `sw/` exists at all, what it contains, and how it
-  is built and loaded. Graduates from ticket 04.
-- **Floorplan, PDN and macro placement.** Sixteen to thirty-two SRAM macros will not place
-  themselves, and `macro_placement.cfg` has to be written explicitly with routing channels
-  between rows. Graduates from ticket 11. Ticket 14 fixed one input to it: the PDN is a single
-  3.3 V rail unless ticket 18 splits the domains, in which case the ring carries four rails
-  and the pad allocation is 18's to set, not this patch's.
+  is built and loaded. Graduates from ticket 04. Ticket 11 fixed the target it has to hit: 16 KiB
+  contiguous from `0x1C00_0000`, **no execute-in-place path anywhere in the design**, and every
+  upstream boot address (`0x1C00_8080`, `0x1C00_0880`, and the `0x1C07_C000` linker origin) now
+  outside the memory that exists.
 - **Timing closure.** Ticket 10 answered the first two thirds: 25 MHz holds on logic depth at
   both voltages, and the critical path lands in the AXI crossbar, which is now ticket 17.
   What is left is genuinely not sharp yet, because it cannot be asked before there is a
@@ -246,7 +270,10 @@ trigger resolves.
   for the 10,130-load clock net, and whether wire RC eats the 50% margin at 5.0 V or the 27%
   at 3.3 V. Graduates from the first full harden. Ticket 16 made the first of those concrete:
   the clock net now has **54 real clock gates in it** rather than transparent black boxes, so
-  they are 54 points CTS has to balance to rather than an abstraction.
+  they are 54 points CTS has to balance to rather than an abstraction. Ticket 11 added a second:
+  the SRAM access path is roughly 16 ns of the 50 ns budget at `ss_125C_3v00`, but that number is
+  the foundry macro's, quoted for a macro nobody characterised, so it is a placeholder that
+  ticket 20 has to either justify or replace.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
   technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
@@ -255,7 +282,10 @@ trigger resolves.
   `$setup`/`$hold`/`$width` checks. **Verilator supports neither, so it is out.** The container
   ships Icarus Verilog 14.0, which handles both, and the harness will read
   `gf180mcu_fd_sc_mcu7t5v0.v` and `primitives.v` from the PDK rather than compiling the netlist
-  standalone.
+  standalone. Ticket 11 put a precondition on it: the SRAM model this harness will read,
+  `gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v`, has a specify block that is **2x optimistic on access
+  time** at 3.3 V, so ticket 20 has to land first or the harness validates a chip that does not
+  exist.
 - **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
   needs, which are discovered by running into false errors. Graduates from a first full
   harden. Ticket 15 added one known input: `gf180mcu_ocd_io`'s LibreLane config sets
@@ -266,12 +296,14 @@ trigger resolves.
 - **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
   exactly once. Late, and mechanical once the floorplan is fixed.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
-  fallback is if it is not. Still waiting on ticket 11, but ticket 10 sharpened the stakes:
-  the logic wants 9.76 mm² of a 12.92 mm² core at the template's 35% density, and that
-  density is the optimistic end of what Run 1 achieved. At 8,000 cells/mm² instead of the
-  measured 12,190 the logic alone wants 14.9 mm² and there is no chip. So this patch is now
-  about how much has to be cut and whether cutting it is a December-sized job, not about
-  whether anything needs cutting at all.
+  fallback is if it is not. Ticket 10 set the stakes: the logic wants 9.76 mm² of a 12.92 mm²
+  core at the template's 35% density, and that density is the optimistic end of what Run 1
+  achieved. At 8,000 cells/mm² instead of the measured 12,190 the logic alone wants 14.9 mm² and
+  there is no chip. Ticket 11 closed the memory half of it and left the arithmetic exact rather
+  than open: logic plus a 2.79 mm² SRAM array is **97% of core**, and 89% once ticket 12 cuts
+  `apb_i2cs`. So the remaining question is no longer how much has to be cut, it is whether 89% at
+  35% density actually places, which is ticket 21's to answer and the first thing that could
+  still take the December date away.
 
 ## Out of scope
 

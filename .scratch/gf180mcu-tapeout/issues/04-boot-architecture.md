@@ -28,6 +28,28 @@ Secondary questions this decision drags in: does the boot code live in this repo
 fork, how is it built (which RISC-V toolchain, and is it in the container), and how much L2
 does the boot process need to reserve.
 
+Ticket 11 added three constraints and killed one option that was never real.
+
+**Every upstream boot address stops existing.** L2 is now 16 KiB contiguous from `0x1C00_0000`:
+private bank 0 to `0x1C00_1000`, private bank 1 to `0x1C00_2000`, interleaved TCDM to
+`0x1C00_4000`. `a2_boot/main.c` jumps to `0x1C00_8080` on hardware and `0x1C00_0880` under
+Verilator, and `a2_boot/core-v-mcu2-rom.ld` puts the bootloader's own RAM at `0x1C07_C000`, which
+was 448 KiB into a 512 KiB TCDM. All three have to move, along with `boot_code/link.ld`'s
+`ORIGIN = 0x1C000000, LENGTH = 0x4000`. This is not a consequence of any answer here; it is true
+already.
+
+**There is no execute-in-place path.** `docs/porting-analysis.md:174` offers "programs must fit
+in 16 KiB or execute in place from SPI flash", and the second half describes hardware that does
+not exist: the uDMA QSPI is a DMA engine with a register interface, not a memory window, and the
+AXI plug is commented out at `soc_interconnect_wrap.sv:93`. Flash boot means copying an image
+into SRAM and jumping to it, so external flash changes how code arrives and not how much SRAM the
+chip needs. An XIP controller would be new hardware and is not ticketed.
+
+**The bank split gives this ticket something to use.** Ticket 11's recommended arrangement is
+bootloader scratch in the interleaved half and the application image in the private half, which
+puts them behind different crossbars and makes it structurally impossible for the loader to
+overwrite the image it just copied in.
+
 ## Definition of done
 
 A named architecture, with the pad cost written down so ticket 06 can budget for it, and the
