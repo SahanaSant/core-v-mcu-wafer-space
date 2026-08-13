@@ -45,7 +45,7 @@ define require
 	}
 endef
 
-.PHONY: help shell pdk elaborate harden sim sim-gl precheck precheck-image clean
+.PHONY: help shell pdk elaborate area sta harden sim sim-gl precheck precheck-image clean
 
 help: ## Show this help
 	@echo "core-v-mcu-wafer-space"
@@ -68,6 +68,12 @@ pdk: ## Fetch the pinned GF180MCU PDK into ./pdk
 
 elaborate: ## Elaborate the SoC RTL and list the modules still missing
 	@$(RUN) sh /foss/designs/flow/synth/elaborate.sh
+
+area: ## Synthesise to standard cells and report the logic area
+	@$(RUN) sh /foss/designs/flow/synth/area.sh
+
+sta: ## Report the critical path of the synthesised netlist (needs `make area`)
+	@$(RUN) sh /foss/designs/flow/synth/sta.sh
 
 harden: ## Run LibreLane RTL-to-GDS
 	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)

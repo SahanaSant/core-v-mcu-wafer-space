@@ -47,4 +47,8 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e SCL="${SCL:-gf180mcu_fd_sc_mcu7t5v0}" \
     -e PAD="${PAD:-gf180mcu_fd_io}" \
     -e SRAM="${SRAM:-gf180mcu_fd_ip_sram}" \
+    -e TOP="${TOP:-core_v_mcu}" \
+    -e MODE="${MODE:-both}" \
+    -e LIB_CORNER="${LIB_CORNER:-ss_125C_4v50}" \
+    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-40}" \
     "$IMAGE" --skip "$@"

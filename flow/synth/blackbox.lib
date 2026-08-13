@@ -1,0 +1,367 @@
+/*
+ * Copyright 2026 Yusef Karim
+ * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
+ * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+ *
+ * Zero-delay timing models for the modules that flow/synth/stubs.sv black-boxes,
+ * so OpenSTA can link the synthesised netlist and propagate a clock through it.
+ *
+ * These are structural, not characterised. Every arc is zero delay and every
+ * pin is zero capacitance. Their whole job is to let the clock reach the flops
+ * and to let paths terminate somewhere, so that `sta.sh` can report the
+ * standard-cell critical path. Two consequences worth stating out loud:
+ *
+ *   - Paths that start or end at a memory are optimistic by the macro's whole
+ *     access time. The foundry sram512x8 is characterised at 164 MHz typical,
+ *     so roughly 6 ns is missing from every such path. Ticket 11 picks the
+ *     macro; its real Liberty replaces this file for those cells.
+ *   - The clock arrives everywhere at once, because apb_pll and the clock cells
+ *     are ideal. There is no clock tree here, and no clock cells to insert one
+ *     with until ticket 16 lands.
+ */
+
+library (core_v_mcu_blackbox) {
+  delay_model : table_lookup;
+  time_unit : "1ns";
+  voltage_unit : "1V";
+  current_unit : "1mA";
+  capacitive_load_unit (1, pf);
+  pulling_resistance_unit : "1ohm";
+  leakage_power_unit : "1uW";
+  default_max_transition : 3.0;
+
+  /* One scalar template covers every arc, since every arc is zero. */
+  lu_table_template (scalar) {
+    variable_1 : total_output_net_capacitance;
+    index_1 ("0.0");
+  }
+
+  /* Setup and hold want transition axes, not load. */
+  lu_table_template (constraint) {
+    variable_1 : related_pin_transition;
+    variable_2 : constrained_pin_transition;
+    index_1 ("0.0");
+    index_2 ("0.0");
+  }
+
+  type (be4) { base_type : array; data_type : bit; bit_width : 4; bit_from : 3; bit_to : 0; }
+  type (w32) { base_type : array; data_type : bit; bit_width : 32; bit_from : 31; bit_to : 0; }
+  type (a12) { base_type : array; data_type : bit; bit_width : 12; bit_from : 11; bit_to : 0; }
+  type (a11) { base_type : array; data_type : bit; bit_width : 11; bit_from : 10; bit_to : 0; }
+
+  /* --- Clock cells ------------------------------------------------------- */
+  /* Modelled as buffers on the clock, which is what they are for timing until
+   * ticket 16 binds them to real GF180MCU cells. */
+
+  cell (pulp_clock_gating) {
+    pin (clk_i)    { direction : input; clock : true; capacitance : 0.0; }
+    pin (en_i)     { direction : input; capacitance : 0.0; }
+    pin (test_en_i){ direction : input; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true; function : "clk_i";
+      timing () {
+        related_pin : "clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  cell (cluster_clock_gating) {
+    pin (clk_i)    { direction : input; clock : true; capacitance : 0.0; }
+    pin (en_i)     { direction : input; capacitance : 0.0; }
+    pin (test_en_i){ direction : input; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true; function : "clk_i";
+      timing () {
+        related_pin : "clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  cell (cv32e40p_clock_gate) {
+    pin (clk_i)        { direction : input; clock : true; capacitance : 0.0; }
+    pin (en_i)         { direction : input; capacitance : 0.0; }
+    pin (scan_cg_en_i) { direction : input; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true; function : "clk_i";
+      timing () {
+        related_pin : "clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  cell (pulp_clock_inverter) {
+    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true; function : "!clk_i";
+      timing () {
+        related_pin : "clk_i"; timing_sense : negative_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  cell (cluster_clock_inverter) {
+    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true; function : "!clk_i";
+      timing () {
+        related_pin : "clk_i"; timing_sense : negative_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  cell (pulp_clock_mux2) {
+    pin (clk0_i)   { direction : input; clock : true; capacitance : 0.0; }
+    pin (clk1_i)   { direction : input; clock : true; capacitance : 0.0; }
+    pin (clk_sel_i){ direction : input; capacitance : 0.0; }
+    pin (clk_o) {
+      direction : output; clock : true;
+      function : "(clk0_i & !clk_sel_i) | (clk1_i & clk_sel_i)";
+      timing () {
+        related_pin : "clk0_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "clk1_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  /* --- Clock source ------------------------------------------------------ */
+  /* The whole clock generator, per ticket 03. Ideal: every output is the
+   * reference, so one create_clock on ref_clk_i reaches the entire design. */
+
+  cell (apb_pll) {
+    pin (ref_clk_i) { direction : input; clock : true; capacitance : 0.0; }
+    pin (rst_ni)    { direction : input; capacitance : 0.0; }
+    pin (HCLK)      { direction : input; clock : true; capacitance : 0.0; }
+    pin (HRESETn)   { direction : input; capacitance : 0.0; }
+    pin (PWRITE)    { direction : input; capacitance : 0.0; }
+    pin (PSEL)      { direction : input; capacitance : 0.0; }
+    pin (PENABLE)   { direction : input; capacitance : 0.0; }
+    bus (PADDR)  { bus_type : a12; direction : input; capacitance : 0.0; }
+    bus (PWDATA) { bus_type : w32; direction : input; capacitance : 0.0; }
+    bus (PRDATA) { bus_type : w32; direction : output; }
+    pin (PREADY)  { direction : output; }
+    pin (PSLVERR) { direction : output; }
+    pin (soc_clk_o) {
+      direction : output; clock : true; function : "ref_clk_i";
+      timing () {
+        related_pin : "ref_clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (periph_clk_o) {
+      direction : output; clock : true; function : "ref_clk_i";
+      timing () {
+        related_pin : "ref_clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (cluster_clk_o) {
+      direction : output; clock : true; function : "ref_clk_i";
+      timing () {
+        related_pin : "ref_clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (ref_clk_o) {
+      direction : output; clock : true; function : "ref_clk_i";
+      timing () {
+        related_pin : "ref_clk_i"; timing_sense : positive_unate;
+        cell_rise (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("0.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+  }
+
+  /* --- Memories ---------------------------------------------------------- */
+  /* Synchronous, one-cycle read. Zero access time, so every path through a
+   * memory is short by the real macro's clk-to-Q. Ticket 11 replaces this. */
+
+  cell (core_v_mcu_interleaved_ram) {
+    interface_timing : true;
+    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
+    pin (rst_ni){ direction : input; capacitance : 0.0; }
+    pin (csn_i) {
+      direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    pin (wen_i) {
+      direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (be_i) {
+      bus_type : be4; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (addr_i) {
+      bus_type : a12; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (wdata_i) {
+      bus_type : w32; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (rdata_o) {
+      bus_type : w32; direction : output;
+      timing () { related_pin : "clk_i"; timing_type : rising_edge;
+                  cell_rise (scalar) { values ("0.0"); }
+                  cell_fall (scalar) { values ("0.0"); }
+                  rise_transition (scalar) { values ("0.0"); }
+                  fall_transition (scalar) { values ("0.0"); } }
+    }
+  }
+
+  cell (core_v_mcu_private_ram) {
+    interface_timing : true;
+    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
+    pin (rst_ni){ direction : input; capacitance : 0.0; }
+    pin (csn_i) {
+      direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    pin (wen_i) {
+      direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (be_i) {
+      bus_type : be4; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (addr_i) {
+      bus_type : a12; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (wdata_i) {
+      bus_type : w32; direction : input; capacitance : 0.0;
+      timing () { related_pin : "clk_i"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "clk_i"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (rdata_o) {
+      bus_type : w32; direction : output;
+      timing () { related_pin : "clk_i"; timing_type : rising_edge;
+                  cell_rise (scalar) { values ("0.0"); }
+                  cell_fall (scalar) { values ("0.0"); }
+                  rise_transition (scalar) { values ("0.0"); }
+                  fall_transition (scalar) { values ("0.0"); } }
+    }
+  }
+
+  cell (a2_bootrom) {
+    interface_timing : true;
+    pin (CLK) { direction : input; clock : true; capacitance : 0.0; }
+    pin (CEN) {
+      direction : input; capacitance : 0.0;
+      timing () { related_pin : "CLK"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "CLK"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (A) {
+      bus_type : a11; direction : input; capacitance : 0.0;
+      timing () { related_pin : "CLK"; timing_type : setup_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+      timing () { related_pin : "CLK"; timing_type : hold_rising;
+                  rise_constraint (constraint) { values ("0.0"); }
+                  fall_constraint (constraint) { values ("0.0"); } }
+    }
+    bus (Q) {
+      bus_type : w32; direction : output;
+      timing () { related_pin : "CLK"; timing_type : rising_edge;
+                  cell_rise (scalar) { values ("0.0"); }
+                  cell_fall (scalar) { values ("0.0"); }
+                  rise_transition (scalar) { values ("0.0"); }
+                  fall_transition (scalar) { values ("0.0"); } }
+    }
+  }
+}

@@ -81,7 +81,11 @@ At 209,400 µm² per 512 bytes, GF180MCU foundry SRAM costs **0.409 mm² per KiB
 
 Meanwhile the logic budget looks like this. CV32E40P without FPU is about 50 kGE with a latch-based register file [13]. A GF180 7-track NAND2 is roughly 6.6 µm² (3.92 µm row height × three 0.56 µm sites), so 50 kGE is about 0.33 mm² of raw cell area, or 0.7 to 0.9 mm² placed at the template's 35 percent target density [18]. Adding the uDMA subsystem, TCDM and APB interconnect, debug module, timers, and pad control plausibly brings total logic to 200–300 kGE, or 3 to 5 mm² placed.
 
+> **Correction, measured.** The NAND2 figure in this paragraph is wrong and everything derived from it is 1.66× optimistic. `gf180mcu_fd_sc_mcu7t5v0__nand2_1` is 2.800 × 3.920 µm = **10.976 µm²**, from both the liberty `area` property and the LEF `SIZE` record; it is five 0.56 µm sites wide, not three. Synthesising this codebase (`make area`) gives **311.3 kGE and 3.417 mm² of cell area**, so the gate count above was close but the placed area is **9.76 mm², not 3 to 5**. The CV32E40P alone measures 71 kGE rather than 50, because upstream's filesets select the flip-flop register file over the latch-based one this estimate assumed.
+
 **Conclusion**: on a full 1×1 slot, roughly 7 to 9 mm² remains for memory after logic. That is 16 to 21 KiB. Design for 16 KiB and treat 32 KiB as out of reach unless you move to denser community 3.3 V macros or an OpenRAM-generated compiler with a smaller cell.
+
+> **Correction, measured.** This conclusion inverts once the NAND2 error above is fixed. What remains after logic is **3.16 mm²**, which is **7.7 KiB** of foundry macro, not 16 to 21. Designing for 16 KiB requires either cutting logic or the `gf180mcu_ocd_ip_sram` macro, which is 2.6× denser and would give 20.4 KiB in the same space. The advice to treat the denser community macros as a fallback was too cautious: they are the only way the stated target is reachable.
 
 ## 4. Required RTL modifications
 
@@ -335,6 +339,8 @@ The stronger precedent for the sv2v and svase path is **Basilisk** [17], which d
 ## Limitations and open questions
 
 Several numbers here are engineering estimates rather than measured results. The 200–300 kGE figure for the full SoC logic is extrapolated from the published 50 kGE CV32E40P figure [13] and typical PULPissimo peripheral sizes; it has not been verified by synthesizing this codebase. Run a synthesis-only pass early, since the entire area budget hinges on it. Similarly, the 20–40 MHz frequency range comes from the template default and Run 1 density data, not from a timing run on this design.
+
+> **Both have now been measured**, by `make area` and `make sta`; see the corrections in sections 4.3 and 4.4. The gate count held up and the area conversion did not. The frequency range also held up, but only as a statement about logic depth: 35 stages at 0.568 ns gives a 50 MHz ceiling at 5.0 V and 34 MHz at 3.3 V, before any clock tree, wire RC or hold fixing exists. This advice to measure early was correct and is the reason the area problem surfaced in time to act on it.
 
 The 3.3 V options deserve investigation before committing to the 5 V `gf180mcu_fd_sc_mcu7t5v0` library. wafer.space has test chips for `gf180mcu_ocd_ip_sram` 3.3 V macros including a 1 KiB block [1], and a 1 KiB macro that is less than twice the area of the 512 B macro would meaningfully improve the memory budget. This was not quantified because the `gf180mcu_ocd_ip_sram` datasheet was not located during this research. Ask on the wafer.space Discord or the `gf180mcu-pdk-users` group.
 

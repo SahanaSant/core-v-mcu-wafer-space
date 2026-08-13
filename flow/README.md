@@ -59,6 +59,29 @@ which is what selects the ASIC branches in `soc_domain.sv` and `safe_domain.sv`;
 `default` target declares it as a parameter defaulting to true, so do not let a backend pass
 it through.
 
+## Synthesis must flatten
+
+Not optional, and worth 1.30 mm² of cell area. The eFPGA slot is replaced by
+`rtl/gf180mcu/gf180_efpga_stub.sv`, whose four TCDM master ports hold `req` low forever.
+Flattened, constant propagation removes them completely: ticket 10 confirmed
+`gen_l2_demux[5]` through `[8]` contain zero cells in the flat netlist while ports 0 to 4
+survive. With module boundaries kept, nothing propagates across them, all nine master ports
+are built in full, and the three crossbars arbitrate between nine masters instead of five.
+Measured, that is 4.72 mm² hierarchical against 3.42 mm² flattened.
+
+So do not set `SYNTH_HIERARCHY_MODE` to keep hierarchy, and if a future ticket wants
+hierarchy preserved for some other reason, parameterise `N_EFPGA_TCDM_PORTS` down first.
+`make area` runs both ways precisely so this stays visible.
+
+Two other things synthesis needs, both discovered by ticket 10. `dfflibmap` maps flip-flops
+only, and upstream's `apb_soc_ctrl` infers four latches (`r_bootsel[1:0]`,
+`reset_reason[1:0]`), so the PDK's `libs.tech/librelane/$SCL/latch_map.v` has to be applied
+or they survive as behavioural `always` blocks. And the design arrives at place and route
+with no buffering at all on its highest-fanout nets: 10,130 loads on the SoC clock, 4,841 on
+`apb_reset`, 4,309 on a reset-derived enable, twenty-two nets above 500. Clock tree synthesis
+handles the first; the reset nets are `repair_design`'s problem and are worth checking
+explicitly rather than assuming.
+
 ## Macro placement
 
 Sixteen to thirty-two SRAM macros will not place themselves. Write `macro_placement.cfg`

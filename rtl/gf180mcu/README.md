@@ -80,18 +80,25 @@ model in `rtl/simulation/core_v_mcu_sim_ram.sv` before trusting it.
 
 ## Area budget
 
-Foundry SRAM costs **0.409 mm² per KiB**. A `1x1` slot has 12.92 mm² of core area, and logic
-plausibly takes 3 to 5 mm² of it.
+A `1x1` slot has 12.92 mm² of core area. **Logic takes 9.76 mm² of it**, measured with
+`make area`: 3.417 mm² of standard cells placed at `PL_TARGET_DENSITY_PCT: 35`. That leaves
+**3.16 mm²**, and it is the number every memory decision has to fit inside.
 
-| L2 size | Macros | Area | Share of core |
-| --- | --- | --- | --- |
-| 8 KiB | 16 | 3.35 mm² | 26% |
-| 16 KiB | 32 | 6.70 mm² | 52% |
-| 32 KiB | 64 | 13.4 mm² | does not fit |
+| L2 size | Foundry `sram512x8` | Share of what is left | OCD `sram1024x8` | Share |
+| --- | --- | --- | --- | --- |
+| 4 KiB | 1.68 mm² | 53% | 0.62 mm² | 20% |
+| 8 KiB | 3.35 mm² | 106%, does not fit | 1.24 mm² | 39% |
+| 16 KiB | 6.70 mm² | does not fit | 2.48 mm² | 78% |
+| 32 KiB | 13.4 mm² | does not fit | 4.96 mm² | does not fit |
 
-Target 16 KiB. Upstream's 512 KiB interleaved plus 64 KiB private would need 241 mm², which
-is why the private banks are the first thing to drop. Do not commit to a bank configuration
-before a synthesis-only run has produced a real cell count.
+Foundry SRAM costs 0.409 mm² per KiB and the `gf180mcu_ocd_ip_sram` macro 0.155, from
+ticket 07. The consequence is blunt: **the 16 KiB target is unreachable with the foundry
+macro** without cutting logic first, and reachable with the OCD macro only because it is 2.6x
+denser. Upstream's 512 KiB interleaved plus 64 KiB private would need 241 mm², which is why
+the private banks are the first thing to drop.
+
+Re-run `make area` after any change that adds or removes RTL. The budget above is a
+measurement with a date on it, not an invariant.
 
 ## Conventions
 

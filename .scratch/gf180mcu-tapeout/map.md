@@ -27,12 +27,20 @@ through yosys-slang and prints every module the design instantiates but does not
 ticket that changes RTL should end by running it, and any ticket that wonders what is left to
 write should start by running it.
 
+`make area` and `make sta` exist as of ticket 10 and take about ten and two minutes. The
+first synthesises to standard cells twice, flattened and hierarchical, and writes
+`flow/build/area/area.md`: totals, kGE, placed area, the implied SRAM budget, and a
+per-module breakdown by instance path. The second reports the critical path as logic depth
+at both supply corners. Any ticket that removes or reconfigures RTL should quote the new
+flattened total rather than describing what it expects to have saved.
+
 Standing preferences for this effort:
 
-- Measure before committing. The 200 to 300 kGE logic estimate is the weakest number in the
-  plan, and the memory, peripheral and floorplan decisions all hang off it. Ticket 10
-  replaces it with a real number, and nothing downstream of it should be decided on the
-  estimate.
+- Measure before committing. Ticket 10 did this for logic area and the estimate it replaced
+  was 1.66x optimistic, so treat every remaining derived number in
+  `docs/porting-analysis.md` as unverified until something measures it. `make area` and
+  `make sta` are one command each and take about twelve minutes together; run them after any
+  RTL or configuration change rather than reasoning about what the change should have done.
 - Seed from the [wafer.space project template](https://github.com/wafer-space/gf180mcu-project-template)
   and diff, rather than writing flow configuration from first principles. Its defaults encode
   Run 1 and Run 2 experience.
@@ -111,6 +119,19 @@ signed ECA covering the commit author.
   hardcodes `gf180mcuC` with no `gf180mcuD` code path at all, which is a DRC-relevant
   mismatch since the two variants differ in top-metal thickness. Either disqualifier alone
   is sufficient. The hands-on half is cancelled rather than deferred.
+- [10 Measure the real logic area](issues/10-synthesis-area-baseline.md)
+  — **311 kGE, and it does not fit.** The gate count was close to the estimate's 200 to 300
+  kGE, but the estimate's NAND2 was wrong by 1.66x, so placed area is 9.76 mm² rather than 3
+  to 5, and what is left for SRAM is **3.16 mm², not 7 to 9**. That is 7.7 KiB of foundry
+  macro against a 16 KiB target, so ticket 07's OCD macro is now load-bearing for ticket 11
+  rather than an optimisation. `make area` and `make sta` reproduce it. The area leaders are
+  the uDMA at 30.1%, the interconnect at 22.0%, the core at 16.8% and **`apb_i2cs` at 11.3%**,
+  the last being two behavioural FIFOs synthesised to 4,096 flops. The eFPGA tie-off does fold
+  away, but **only when the flow flattens**, which is now a flow requirement rather than a
+  free win. On timing, 25 MHz holds on logic depth at both voltages (35 stages, 19.9 ns at
+  5.0 V and 29.1 ns at 3.3 V) but nothing else: the clock net has 10,130 loads and the reset
+  net 4,841, with no trees built. The critical path starts in the AXI crossbar, which opened
+  ticket 17.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -136,8 +157,12 @@ trigger resolves.
 - **Floorplan, PDN and macro placement.** Sixteen to thirty-two SRAM macros will not place
   themselves, and `macro_placement.cfg` has to be written explicitly with routing channels
   between rows. Graduates from ticket 11.
-- **Timing closure.** Whether 25 MHz holds, where the critical paths land, and how much hold
-  fixing the flow needs. Graduates from ticket 10.
+- **Timing closure.** Ticket 10 answered the first two thirds: 25 MHz holds on logic depth at
+  both voltages, and the critical path lands in the AXI crossbar, which is now ticket 17.
+  What is left is genuinely not sharp yet, because it cannot be asked before there is a
+  floorplan: how much hold fixing the flow needs, what the clock tree costs once one exists
+  for the 10,130-load clock net, and whether wire RC eats the 50% margin at 5.0 V or the 27%
+  at 3.3 V. Graduates from the first full harden.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
   technology-cell work.
@@ -147,8 +172,12 @@ trigger resolves.
 - **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
   exactly once. Late, and mechanical once the floorplan is fixed.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
-  fallback is if it is not. Graduates from tickets 10 and 11, which together produce the
-  first honest picture of how much design work remains.
+  fallback is if it is not. Still waiting on ticket 11, but ticket 10 sharpened the stakes:
+  the logic wants 9.76 mm² of a 12.92 mm² core at the template's 35% density, and that
+  density is the optimistic end of what Run 1 achieved. At 8,000 cells/mm² instead of the
+  measured 12,190 the logic alone wants 14.9 mm² and there is no chip. So this patch is now
+  about how much has to be cut and whether cutting it is a December-sized job, not about
+  whether anything needs cutting at all.
 
 ## Out of scope
 
