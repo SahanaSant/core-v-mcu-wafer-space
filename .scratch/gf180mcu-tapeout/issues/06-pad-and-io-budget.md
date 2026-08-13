@@ -16,10 +16,11 @@ output. That leaves `N_APBIO` overcommitted: GPIO(32) plus PWM(16) plus I2CS(3) 
 functions competing for 40 pads.
 
 So the real question is which functions lose their multiplexer entries. That is a product
-decision, not a mechanical one, and it interacts with two other tickets: ticket 04 may claim
-pads for SPI flash boot, and ticket 12 may remove peripherals entirely, which frees their
-pads. Resolve this one after those two if the ordering allows, or resolve it provisionally
-and revisit.
+decision, not a mechanical one, and it interacts with two other tickets: ticket 12 may remove
+peripherals entirely, which frees their pads, and ticket 04 is now resolved — net **+3** pads
+(4 new QSPI pins for SPI flash boot, 1 freed by dropping `bootsel_i`), well inside the 8-pad
+slack this plan already has. Resolve after ticket 12 if the ordering allows, or resolve it
+provisionally and revisit.
 
 `pad_control.sv` and `safe_domain.sv` are generated files. The answer has to be expressed as
 a modified `perdef.json` with the multiplexer regenerated through upstream's

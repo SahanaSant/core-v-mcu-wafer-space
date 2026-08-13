@@ -275,6 +275,16 @@ signed ECA covering the commit author.
   (`TOVERILOG`, `SYNTHESIS`, `DISABLE_EFPGA`) and a file-exclusion list, plus the useful fact
   that upstream RTL needed no source patches. The real find is **Basilisk**, a genuine
   tapeout through the Bender/Morty/SVase/sv2v chain, now required reading for ticket 03.
+- [04 Boot architecture: how does the chip fetch its first instruction?](issues/04-boot-architecture.md)
+  — **SPI-flash boot only, single-SPI, CRC32-checked, no ROM fallback, JTAG-only recovery.**
+  Copy-then-jump via uDMA QSPI, never XIP: ticket 11 had already killed execute-in-place, and
+  an XIP controller would be new hardware off this map. Upstream's bootsel-driven I2C fallback
+  is dropped entirely, along with the `bootsel_i` pad, since the JTAG debug module
+  (unconditionally present, independent of ROM cooperation) is now the sole recovery path on a
+  CRC failure. Net pad cost for ticket 06 is **+3** (4 new QSPI pins, 1 freed), comfortably
+  inside its 8-pad slack. ROM size is estimated, not yet measured, at **2 KiB**, for ticket 11's
+  budget. `gf180_bootrom.sv` is a generated file, in `pad_control.sv`'s style; writing it,
+  `sw/bootrom/`, and the generator script, and measuring the real area, is now ticket 23.
 
 ## Not yet specified
 
@@ -282,19 +292,14 @@ In scope, but not sharp enough to ticket. Each patch graduates when the ticket n
 trigger resolves.
 
 - **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
-  16 took the clock cells out of it and ticket 19 the two memories, which landed as one
-  `gf180_l2_ram.sv` rather than the two files the table expected. **Two files are left**, each
-  waiting on a decision rather than on sharpness: `gf180_bootrom.sv` from ticket 04, and
-  `gf180_clk_gen.sv` from ticket 05, which provides `apb_pll` in its entirety rather than a PLL
-  cell inside it. They are also the last two black boxes `make elaborate` reports, so that
-  command's output is now a two-line to-do list. Pad wrappers have left this patch: nothing in
-  the SoC instantiates a pad cell, so `gf180_pads.sv` is `chip_top` work and graduates with the
-  floorplan.
-- **Software and the boot image.** Whether `sw/` exists at all, what it contains, and how it
-  is built and loaded. Graduates from ticket 04. Ticket 11 fixed the target it has to hit: 16 KiB
-  contiguous from `0x1C00_0000`, **no execute-in-place path anywhere in the design**, and every
-  upstream boot address (`0x1C00_8080`, `0x1C00_0880`, and the `0x1C07_C000` linker origin) now
-  outside the memory that exists.
+  16 took the clock cells out of it, ticket 19 the two memories (landing as one
+  `gf180_l2_ram.sv` rather than the two files the table expected), and ticket 04 the boot ROM's
+  architecture. **One file is left waiting on a decision**: `gf180_clk_gen.sv` from ticket 05,
+  which provides `apb_pll` in its entirety rather than a PLL cell inside it. Writing
+  `gf180_bootrom.sv` itself no longer waits on a decision, only on being built and measured,
+  which is ticket 23. Both are still the last two black boxes `make elaborate` reports. Pad
+  wrappers have left this patch: nothing in the SoC instantiates a pad cell, so `gf180_pads.sv`
+  is `chip_top` work and graduates with the floorplan.
 - **Timing closure.** Ticket 10 looked answered and is not. **Ticket 19 withdrew its headline
   result**: `make sta` ranks paths by pre-layout slack rather than depth, so "25 MHz holds on
   logic depth at both voltages" described a 35-stage path that was never the deepest, and the
@@ -324,7 +329,11 @@ trigger resolves.
   standalone. Ticket 11 put a precondition on it: the SRAM model this harness will read,
   `gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v`, has a specify block that is **2x optimistic on access
   time** at 3.3 V, so ticket 20 has to land first or the harness validates a chip that does not
-  exist.
+  exist. Ticket 04 fixed the last unknown standing between the destination's "prints over UART"
+  and this harness: boot is SPI-flash, copy-then-jump, CRC32-checked, so the hello-world image
+  this harness boots is one more test image loaded exactly the way ticket 23's `sw/bootrom` loads
+  any other, not a special case. Whether it needs its own `sw/app` directory or lives alongside
+  the harness's other three tests is undecided and stays in this patch.
 - **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
   needs, which are discovered by running into false errors. Graduates from a first full
   harden. Ticket 15 added one known input: `gf180mcu_ocd_io`'s LibreLane config sets
