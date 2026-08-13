@@ -23,9 +23,17 @@ writing configuration from first principles.
 
 The template's defaults encode hard-won knowledge. Change them deliberately, not casually.
 
-- `CLOCK_PERIOD: 40` gives 25 MHz. That is the realistic target for this process and flow.
-  The SRAM macro itself runs at 164 MHz typical at 5.0 V, so the limit is standard-cell delay
-  and open-tool timing closure, not memory.
+- **Supply and corners.** Ticket 14 settled the core at 3.3 V, single supply, and the PDK's
+  own `libs.tech/librelane/config.tcl` defaults to 5 V, so four settings have to be overridden
+  after seeding from the template and nothing warns you if you miss one:
+  `VDD_PIN_VOLTAGE: 3.30`, and `CELL_LIBS`, `STA_CORNERS` and `DEFAULT_CORNER` rebuilt from
+  `tt_025C_3v30`, `ff_n40C_3v60` and `ss_125C_3v00`. The library does not change:
+  `gf180mcu_fd_sc_mcu7t5v0` carries all 229 cells at every one of its fifteen corners, and
+  cell geometry is identical across them, so the supply choice costs no area.
+- `CLOCK_PERIOD: 50` gives 20 MHz, revised from 40 by ticket 14. At 3.3 V the synthesised
+  logic is 35 stages and 29.1 ns deep, which is 73% of a 40 ns budget and 58% of a 50 ns one,
+  before any wire RC, clock tree or hold fixing exists. Ticket 05 owns the final number. The
+  memory is not the limit either way: the foundry macro needs 18.26 ns at `ss_125C_3v00`.
 - `PL_TARGET_DENSITY_PCT: 35`. Run 1 designs achieved 3k to 14k cells/mm², against a
   theoretical maximum several times higher. Plan against 8k to 12k.
 - Hold-slack margins are overfixed at 0.30 to 0.35 ns for a reason. Leave them alone.

@@ -13,9 +13,10 @@
 # `path_summary.py` recovers the part that is real, which is the number of
 # stages and what a properly driven stage costs. See its header.
 #
-# Both slow corners are reported, because ticket 14 has not settled 3.3 V
-# against 5.0 V and this is one of the few places the choice shows up as a
-# number.
+# Ticket 14 settled the core supply at 3.3 V, so ss_125C_3v00 is the signoff
+# corner and is reported first. ss_125C_4v50 is kept as the informational arm:
+# it is the margin the design gave up to reach the 3.3 V SRAM macros, and
+# keeping it visible is what makes that cost re-checkable if timing gets tight.
 
 set -eu
 
@@ -23,7 +24,8 @@ ROOT=${ROOT:-/foss/designs}
 TOP=${TOP:-core_v_mcu}
 PDK=${PDK:-gf180mcuD}
 SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
-CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-40}
+CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
+SIGNOFF_CORNER=${LIB_CORNER:-ss_125C_3v00}
 NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
 
 # Nets above this fanout are the unbuffered reset and clock trees. Timing
@@ -43,7 +45,7 @@ OUT=$ROOT/flow/build/area
 READABLE=$OUT/$(basename "$NETLIST" .v).sta.v
 "$ROOT/flow/synth/strip_params.py" <"$NETLIST" >"$READABLE"
 
-for corner in ss_125C_4v50 ss_125C_3v00; do
+for corner in ss_125C_3v00 ss_125C_4v50; do
     lib=$LIBDIR/${SCL}__${corner}.lib
     [ -r "$lib" ] || { echo "error: no liberty at $lib" >&2; exit 1; }
 
@@ -77,7 +79,7 @@ done
 echo
 echo "Highest-fanout nets, which is what the flow has to buffer:"
 sta -exit 2>/dev/null <<EOF | grep '^  ' || true
-read_liberty $LIBDIR/${SCL}__ss_125C_4v50.lib
+read_liberty $LIBDIR/${SCL}__${SIGNOFF_CORNER}.lib
 read_liberty $ROOT/flow/synth/blackbox.lib
 read_verilog $READABLE
 link_design $TOP

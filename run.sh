@@ -49,6 +49,6 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e SRAM="${SRAM:-gf180mcu_fd_ip_sram}" \
     -e TOP="${TOP:-core_v_mcu}" \
     -e MODE="${MODE:-both}" \
-    -e LIB_CORNER="${LIB_CORNER:-ss_125C_4v50}" \
-    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-40}" \
+    -e LIB_CORNER="${LIB_CORNER:-ss_125C_3v00}" \
+    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-50}" \
     "$IMAGE" --skip "$@"

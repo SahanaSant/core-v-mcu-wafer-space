@@ -29,15 +29,16 @@ set -eu
 MODE=${MODE:-both}
 PDK=${PDK:-gf180mcuD}
 SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
-CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-40}
+CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
 
 # Cell area does not depend on the corner, but delay-driven technology mapping
 # does: a slower corner makes ABC buy drive strength. Map at the setup corner
-# the flow would sign off at, so the area number is the one implementation will
-# actually see. Ticket 14 has not settled 3.3 V against 5.0 V, so `sta.sh`
-# reports both; the mapping corner here is the 5.0 V one because that is the
-# PDK's LibreLane default.
-LIB_CORNER=${LIB_CORNER:-ss_125C_4v50}
+# the flow will sign off at, so the area number is the one implementation will
+# actually see. Ticket 14 settled that at 3.3 V, so the corner is ss_125C_3v00
+# rather than the PDK LibreLane default's 5.0 V. Note this is still
+# gf180mcu_fd_sc_mcu7t5v0: the `5v0` is the oxide, and the library carries all
+# 229 cells at every one of its fifteen corners with identical geometry.
+LIB_CORNER=${LIB_CORNER:-ss_125C_3v00}
 
 PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
 LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib

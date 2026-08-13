@@ -46,7 +46,7 @@ command line.
 | `PDK` | `gf180mcuD` | 5 metal layers, the variant wafer.space fabricates |
 | `PDK_COMMIT` | `f6eeac7d…` | Matches the wafer.space project template |
 | `SLOT` | `1x1` | 3.93 × 5.12 mm die, 12.92 mm² core area |
-| `SCL` | `gf180mcu_fd_sc_mcu7t5v0` | 7-track 5V standard cells |
+| `SCL` | `gf180mcu_fd_sc_mcu7t5v0` | 7-track cells, 5 V oxide. The `5v0` is the oxide, not the supply: all 229 cells are characterised at 5.0 V, 3.3 V and 1.8 V. Ticket 14 runs them at 3.3 V |
 | `SRAM` | `gf180mcu_fd_ip_sram` | Foundry macros, 512×8 maximum |
 
 The container ships its own PDK build. `make pdk` deliberately fetches the pinned commit into

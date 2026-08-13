@@ -34,8 +34,19 @@ per-module breakdown by instance path. The second reports the critical path as l
 at both supply corners. Any ticket that removes or reconfigures RTL should quote the new
 flattened total rather than describing what it expects to have saved.
 
+As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
+clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
+5.0 V as a second arm, because that margin is what the design gave up to reach the denser
+SRAM and it should stay visible.
+
 Standing preferences for this effort:
 
+- **The supply is 3.3 V, single rail, until ticket 18 says otherwise.** Set by ticket 14. The
+  `5v0` in `gf180mcu_fd_sc_mcu7t5v0` is the oxide, not the supply, and the library is fully
+  characterised at 3.3 V, so this is a corner override and never a library change. Four
+  LibreLane settings have to move together (`VDD_PIN_VOLTAGE`, `CELL_LIBS`, `STA_CORNERS`,
+  `DEFAULT_CORNER`) and nothing warns you if one is missed. Anything that reasons about pad
+  supplies should know that the foundry pads short the core and IO domains on purpose.
 - Measure before committing. Ticket 10 did this for logic area and the estimate it replaced
   was 1.66x optimistic, so treat every remaining derived number in
   `docs/porting-analysis.md` as unverified until something measures it. `make area` and
@@ -132,6 +143,22 @@ signed ECA covering the commit author.
   5.0 V and 29.1 ns at 3.3 V) but nothing else: the clock net has 10,130 loads and the reset
   net 4,841, with no trees built. The critical path starts in the AXI crossbar, which opened
   ticket 17.
+- [14 Core supply voltage: 3.3 V or 5.0 V?](issues/14-core-supply-voltage.md)
+  — **3.3 V core, and it costs nothing.** The premise that this was a library change was
+  wrong: `gf180mcu_fd_sc_mcu7t5v0` carries all 229 cells at all fifteen corners with identical
+  geometry (`nand2_1` is 10.976 um2 at `ss_125C_3v00` exactly as at `ss_125C_4v50`), so the
+  `5v0` is the oxide and ticket 10's area baseline is supply-independent. 3.3 V keeps both SRAM
+  families live where 5.0 V would have removed the OCD macro permanently, and the price is
+  logic depth alone, 29.1 ns against 19.9. Re-measured at the new defaults, `make area` returns
+  118,998 cells and 3,416,649 um2 identical to the cell, so the zero-area claim is measured
+  rather than argued. The clock budget moves to 50 ns for 20 MHz, which puts 3.3 V at 58% of
+  budget against 5.0 V's 40%, and ticket 05 owns the final number. 1.8 V is dead on
+  measurement, not omission: the foundry SRAM needs 56.57 ns at `ss_125C_1v62`. **The IO ring
+  did not resolve**, and the reason is a finding: the foundry pads short the core and IO
+  domains deliberately, `gf180mcu_fd_io` having no core-supply pad cell at all, and the pads
+  are 5 V capable but not 5 V tolerant, since every output PMOS has its bulk on DVDD. So 3.3 V
+  single supply is the buildable baseline and a separated 5.0 V ring needs `gf180mcu_ocd_io`,
+  which is unbuilt. That opened ticket 18 and widened ticket 15 from one library to three.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -156,7 +183,9 @@ trigger resolves.
   is built and loaded. Graduates from ticket 04.
 - **Floorplan, PDN and macro placement.** Sixteen to thirty-two SRAM macros will not place
   themselves, and `macro_placement.cfg` has to be written explicitly with routing channels
-  between rows. Graduates from ticket 11.
+  between rows. Graduates from ticket 11. Ticket 14 fixed one input to it: the PDN is a single
+  3.3 V rail unless ticket 18 splits the domains, in which case the ring carries four rails
+  and the pad allocation is 18's to set, not this patch's.
 - **Timing closure.** Ticket 10 answered the first two thirds: 25 MHz holds on logic depth at
   both voltages, and the critical path lands in the AXI crossbar, which is now ticket 17.
   What is left is genuinely not sharp yet, because it cannot be asked before there is a
