@@ -6,7 +6,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 IMAGE=${OSIC_IMAGE:-hpretl/iic-osic-tools:2026.07}
 
 if command -v podman >/dev/null 2>&1; then
@@ -18,12 +18,14 @@ else
     exit 1
 fi
 
-# Docker needs the host uid mapped in so build artifacts are not root-owned.
-# Podman already maps the invoking user into the container namespace.
+# Build artifacts land in the bind-mounted repo, so the container process has to
+# write as the host user. Docker takes the uid directly. Rootless podman maps the
+# host user to container root by default, which leaves the image's uid 1000 user
+# unable to write the mount; keep-id maps the host uid to itself instead.
 if [ "$ENGINE" = docker ]; then
     USERFLAG="-u $(id -u):$(id -g)"
 else
-    USERFLAG=""
+    USERFLAG="--userns=keep-id"
 fi
 
 # Only allocate a TTY when there is one, so this works in CI.
@@ -33,6 +35,8 @@ if [ "$#" -eq 0 ]; then
     set -- bash
 fi
 
+# The image entrypoint starts VNC or X11 unless --skip comes first, in which
+# case it just execs the command.
 # shellcheck disable=SC2086
 exec "$ENGINE" run --rm $TTY $USERFLAG \
     -v "$ROOT:/foss/designs:z" \
@@ -43,4 +47,4 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e SCL="${SCL:-gf180mcu_fd_sc_mcu7t5v0}" \
     -e PAD="${PAD:-gf180mcu_fd_io}" \
     -e SRAM="${SRAM:-gf180mcu_fd_ip_sram}" \
-    "$IMAGE" "$@"
+    "$IMAGE" --skip "$@"

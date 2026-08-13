@@ -12,7 +12,9 @@ OSIC_IMAGE ?= hpretl/iic-osic-tools:$(OSIC_TAG)
 PDK        ?= gf180mcuD
 PDK_FAMILY ?= gf180mcu
 PDK_COMMIT ?= f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7
-PDK_ROOT   ?= $(ROOT)/pdk
+# Not overridable: the container always sees the PDK at /foss/designs/pdk,
+# which is this path bind-mounted by run.sh.
+PDK_ROOT   := $(ROOT)/pdk
 
 # --- Design configuration ---------------------------------------------------
 SLOT ?= 1x1
@@ -26,7 +28,11 @@ FINAL_GDS  ?= $(ROOT)/flow/final/gds/$(TOP).gds
 PRECHECK_IMAGE ?= gf180mcu-precheck:local
 PRECHECK_REPO  ?= https://github.com/wafer-space/gf180mcu-precheck
 
-RUN := OSIC_IMAGE=$(OSIC_IMAGE) PDK=$(PDK) $(ROOT)/docker/run.sh
+RUN := OSIC_IMAGE=$(OSIC_IMAGE) PDK=$(PDK) $(ROOT)/run.sh
+
+# The precheck image is not the toolchain image, so it cannot go through
+# run.sh. Detect the engine the same way run.sh does.
+ENGINE ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
 
 export SLOT SCL PAD SRAM PDK PDK_FAMILY PDK_COMMIT
 
@@ -77,12 +83,12 @@ sim-gl: ## Run gate-level simulation against the hardened netlist
 
 precheck-image: ## Build the wafer.space precheck container
 	@tmp=$$(mktemp -d) && git clone --depth 1 $(PRECHECK_REPO) $$tmp/precheck \
-	  && docker build -t $(PRECHECK_IMAGE) $$tmp/precheck \
+	  && $(ENGINE) build -t $(PRECHECK_IMAGE) $$tmp/precheck \
 	  && rm -rf $$tmp
 
 precheck: ## Check the final GDS against wafer.space submission rules
 	$(call require,$(FINAL_GDS),run `make harden` first)
-	@docker run --rm -v $(ROOT):/work:z $(PRECHECK_IMAGE) \
+	@$(ENGINE) run --rm -v $(ROOT):/work:z $(PRECHECK_IMAGE) \
 	  --top $(TOP) --slot $(SLOT) /work/flow/final/gds/$(TOP).gds
 
 clean: ## Remove flow outputs (keeps the PDK)

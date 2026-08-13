@@ -30,7 +30,6 @@ rtl/gf180mcu/   GF180 technology cells: SRAM, clock gate, ROM, pads
 rtl/chip/       chip_top, pad ring, upstream instantiation
 flow/           LibreLane config, SDC, PDN, macro placement
 sim/            cocotb testbenches (RTL and gate level)
-docker/         container entry point
 docs/           porting analysis
 ```
 
