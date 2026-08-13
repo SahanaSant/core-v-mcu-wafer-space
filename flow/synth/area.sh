@@ -27,29 +27,10 @@ set -eu
 . "${ROOT:-/foss/designs}/flow/synth/filelist.sh"
 
 MODE=${MODE:-both}
-PDK=${PDK:-gf180mcuD}
-SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
 CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
 
-# Cell area does not depend on the corner, but delay-driven technology mapping
-# does: a slower corner makes ABC buy drive strength. Map at the setup corner
-# the flow will sign off at, so the area number is the one implementation will
-# actually see. Ticket 14 settled that at 3.3 V, so the corner is ss_125C_3v00
-# rather than the PDK LibreLane default's 5.0 V. Note this is still
-# gf180mcu_fd_sc_mcu7t5v0: the `5v0` is the oxide, and the library carries all
-# 229 cells at every one of its fifteen corners with identical geometry.
-LIB_CORNER=${LIB_CORNER:-ss_125C_3v00}
-
-PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
-LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
-LIB=$LIBDIR/${SCL}__${LIB_CORNER}.lib
-
-# `pdk/` carries gf180mcuA through gf180mcuD as symlinks into one ciel version,
-# so a wrong variant name resolves to a real populated directory instead of
-# failing. C and D differ in top-metal thickness and therefore in DRC rules, so
-# assert rather than trust.
-[ "$PDK" = gf180mcuD ] || { echo "error: PDK is $PDK, this design is gf180mcuD only" >&2; exit 1; }
-[ -r "$LIB" ] || { echo "error: no liberty at $LIB" >&2; exit 1; }
+# Sets PDK, SCL, LIB_CORNER, LIBDIR and LIB, and asserts the variant.
+gf180_liberty
 
 # `dfflibmap` maps flip-flops only. Upstream's apb_soc_ctrl infers four latches,
 # and without this they survive as behavioural `always` blocks that OpenSTA
@@ -90,6 +71,7 @@ synth_pass() {
 
     echo "==> synthesising $TOP ($pass, corner $LIB_CORNER, target ${CLOCK_PERIOD_NS} ns)"
     yosys -l "$OUT/synth-$pass.log" -p "
+        read_liberty -lib $LIB
         plugin -i slang
         read_slang -F gf180.f -D SYNTHESIS --top $TOP --keep-hierarchy --error-limit=0
         hierarchy -check -top $TOP

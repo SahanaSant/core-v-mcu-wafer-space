@@ -14,16 +14,13 @@ any RTL change and the list moves with the design.
 
 | Module to provide | Instances | File here | Upstream's version | Notes |
 | --- | --- | --- | --- | --- |
-| `pulp_clock_gating` | 55 | `gf180_clk_gate.sv` | `pulp_clock_gating_xilinx.sv` | bind to `gf180mcu_fd_sc_mcu7t5v0__icgtp_*` |
-| `pulp_clock_mux2` | 8 | `gf180_clk_gate.sv` | `tech_cells_generic` | glitch-free clock mux, in the uDMA clock dividers |
-| `pulp_clock_inverter` | 4 | `gf180_clk_gate.sv` | `tech_cells_generic` | SPI master phase inversion |
-| `cluster_clock_gating` | 1 | `gf180_clk_gate.sv` | `tech_cells_xilinx` | same ICG cell, second naming family |
-| `cluster_clock_inverter` | 1 | `gf180_clk_gate.sv` | `tech_cells_xilinx` | JTAG TAP negedge domain |
-| `cv32e40p_clock_gate` | 1 | `gf180_clk_gate.sv` | `cv32e40p_clock_gate.sv` | same ICG cell, third naming family |
 | `core_v_mcu_interleaved_ram` | 4 | `gf180_interleaved_ram.sv` | `fpga_interleaved_ram.sv` | one per `NB_L2_CHANNELS`, 4 × `sram512x8` per 32-bit word |
 | `core_v_mcu_private_ram` | 2 | `gf180_private_ram.sv` | `fpga_private_ram.sv` | may be dropped entirely, see below |
 | `a2_bootrom` | 1 | `gf180_bootrom.sv` | `a2_bootrom.sv` (sim only) | `$readmemh` does not synthesise |
 | `apb_pll` | 1 | `gf180_clk_gen.sv` | `fpga_pll.sv` | no open GF180 PLL, bypass to the pad |
+
+The six clock cells left this table in ticket 16 and are now in `gf180_clk_gate.sv`;
+see [Clock cells](#clock-cells) below.
 
 Two entries in this table are not what an earlier reading of upstream suggested.
 
@@ -42,6 +39,72 @@ a `chip_top` concern, so `gf180_pads.sv` belongs to `rtl/chip/`, not here.
 
 Until a cell is written, `flow/synth/stubs.sv` carries an empty black box for it so the
 hierarchy closes. Delete the stub as each real implementation lands.
+
+## Clock cells
+
+Six module names, three cells, 70 instances, all in `gf180_clk_gate.sv`. Upstream declares
+the same three behaviours under three naming families and expects the target to bind them.
+
+| Module | Instances | Cell | Area (um2) |
+| --- | ---: | --- | ---: |
+| `pulp_clock_gating` | 55 | `gf180mcu_fd_sc_mcu7t5v0__icgtp_1` | 61.4656 |
+| `cluster_clock_gating` | 1 | the same | |
+| `cv32e40p_clock_gate` | 1 | the same, `scan_cg_en_i` to `TE` | |
+| `pulp_clock_inverter` | 4 | `gf180mcu_fd_sc_mcu7t5v0__clkinv_1` | 8.7808 |
+| `cluster_clock_inverter` | 1 | the same | |
+| `pulp_clock_mux2` | 8 | `gf180mcu_fd_sc_mcu7t5v0__mux2_1` | 28.5376 |
+
+`icgtp` is a real integrated clock gate, `latch_posedge_precontrol` in its liberty, latching
+`E|TE` while `CLK` is low with `Q = CLK & IQ2`. That is upstream's Xilinx model exactly, and
+`TE` is a real pin marked `clock_gate_test_pin`, so the test enable reaches the cell rather
+than being ORed into the enable in RTL. The negedge sibling `icgtn` exists and is unused:
+every gated domain here is posedge, and the negedge logic that does exist inverts rather than
+gates.
+
+**There is no glitch-free clock mux in GF180MCU and the design does not want one.** The only
+clock-specific cells in the library are `clkbuf`, `clkinv`, `icgtp` and `icgtn`; `mux2` and
+`mux4` are ordinary data muxes. Upstream's own generic and FPGA implementations of
+`pulp_clock_mux2` are the plain ternary, and every live instance selects between phase
+variants of one clock: CPHA and CPOL in the SPI master, TCK against inverted TCK in the JTAG
+TAP, and a divided clock against its own source in the three uDMA clock generators. Nothing
+here selects between unrelated clocks, and break-before-make would stall the SPI clock
+mid-transfer on a CPOL change rather than protect anything. It could not be built behind this
+port list regardless: glitch-free muxing needs synchroniser flops, upstream's port list has no
+reset, and adding one means patching every instantiation site. The remaining hazard belongs to
+software, unchanged from upstream: `cfg_cpha_i`, `cfg_cpol_i` and the uDMA `r_clockout_mux`
+are APB-writable at any time, so configure a peripheral before enabling it.
+
+`clkinv` rather than `inv` is intent at no cost: identical area at `_1`, and it is the
+library's clock inverter. Nothing more should be read into it, since ABC already picks
+`clkinv_1` as its general-purpose inverter, 9,974 of them in the flattened netlist.
+
+Drive strengths are all `_1`, the smallest offered. These cells sit at the root of a fanout
+cone with no tree yet; CTS inserts the buffers and the resizer upsizes what it must, and
+starting from the minimum is what lets it.
+
+The cells cost 3,776 um², which the hierarchical pass of `make area` reports exactly:
+4,723,425 um² against ticket 14's 4,719,649 on an identical cell count. Three of the 57 clock
+gates have no load once flattened and drop out, so the flat netlist carries 54 (`ep_pf_evt_i`
+and the uDMA `genblk1[7]` and `[8]` per-channel gates, whose `periph_per_clk_o` reaches no
+flop; flop counts are unchanged, so nothing lost a clock). **The flattened total is not stable
+to better than roughly 0.3% under a structural change of this size**, so read small deltas in
+`flow/build/area/area.md` with care: it came out 8,741 um² *lower* here, almost all of it ABC
+remapping rather than anything the clock cells did.
+
+Cells are instantiated by name, never inferred. Yosys has no reliable path from a
+latch-and-AND to an integrated clock gate, and a clock path left as ordinary logic is free to
+be restructured into gates with unbalanced arrival. The names carry the library
+`gf180mcu_fd_sc_mcu7t5v0`, which is a library and not a variant, so nothing here asserts C
+against D. It does bind the file to that one library: **`make area SCL=<other>` no longer
+works**, because the cells will not resolve. `gf180mcu_as_sc_mcu7t3v3` is dead on
+measurement (ticket 15), so nothing needs that override today; if something ever does, the
+fix is a per-library binding file rather than a parameter, since Verilog cannot parameterise
+a module name.
+
+`flow/synth/filelist.sh` reads the liberty with `read_liberty -lib` before the RTL, which is
+what makes the instantiation legal: yosys-slang imports an instance as a black box only when
+an earlier yosys command loaded the module. Cell area then comes from the liberty rather than
+being silently zero, and no path into `pdk/` appears in the RTL.
 
 ## The eFPGA slot
 
@@ -80,9 +143,14 @@ model in `rtl/simulation/core_v_mcu_sim_ram.sv` before trusting it.
 
 ## Area budget
 
-A `1x1` slot has 12.92 mm² of core area. **Logic takes 9.76 mm² of it**, measured with
-`make area`: 3.417 mm² of standard cells placed at `PL_TARGET_DENSITY_PCT: 35`. That leaves
-**3.16 mm²**, and it is the number every memory decision has to fit inside.
+A `1x1` slot has 12.92 mm² of core area. **Logic takes about 9.75 mm² of it**, measured with
+`make area`: 3.42 mm² of standard cells placed at `PL_TARGET_DENSITY_PCT: 35`. That leaves
+**3.16 to 3.18 mm²**, and it is the number every memory decision has to fit inside.
+
+The range is not hedging. Ticket 10 measured 3.417 mm² and ticket 16 measured 3.408 after
+adding 3,776 um² of clock cells, because removing 70 hierarchy boundaries made ABC remap the
+whole design. Read the flattened total as good to roughly 0.3% and no better, and do not treat
+a 0.02 mm² move in the remainder as a real saving.
 
 | L2 size | Foundry `sram512x8` | Share of what is left | OCD `sram1024x8` | Share |
 | --- | --- | --- | --- | --- |

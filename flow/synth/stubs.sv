@@ -6,70 +6,15 @@
 //
 // This is the definitive list, measured by elaborating the SoC (see
 // `flow/synth/elaborate.sh`), not a guess: with the eFPGA replaced by
-// `rtl/gf180mcu/gf180_efpga_stub.sv`, these ten modules are exactly what is
-// left unresolved. Upstream supplies them per target, from `emulation/xilinx/`
-// for the FPGA and from `rtl/simulation/` for simulation; the GF180MCU
-// implementations belong in `rtl/gf180mcu/`.
+// `rtl/gf180mcu/gf180_efpga_stub.sv`, ten modules were left unresolved. Ticket
+// 16 wrote the six clock cells, so four are left. Upstream supplies them per
+// target, from `emulation/xilinx/` for the FPGA and from `rtl/simulation/` for
+// simulation; the GF180MCU implementations belong in `rtl/gf180mcu/`.
 //
 // Each stub here is empty on purpose. It carries the port list so the hierarchy
 // closes and synthesis has something to instantiate, and it disappears from
 // this file the moment the real cell lands in `rtl/gf180mcu/`. Keep the ports
 // identical to the instantiation sites; the widths below are upstream's.
-
-// --- Clock cells -----------------------------------------------------------
-// Integrated clock gating, inversion and glitch-free muxing. Three families
-// with identical behaviour and different names: pulp_*, cluster_* and the one
-// the core brings with it. All of them bind to the same GF180MCU cells.
-
-(* blackbox *)
-module pulp_clock_gating (
-    input  logic clk_i,
-    input  logic en_i,
-    input  logic test_en_i,
-    output logic clk_o
-);
-endmodule
-
-(* blackbox *)
-module pulp_clock_inverter (
-    input  logic clk_i,
-    output logic clk_o
-);
-endmodule
-
-(* blackbox *)
-module pulp_clock_mux2 (
-    input  logic clk0_i,
-    input  logic clk1_i,
-    input  logic clk_sel_i,
-    output logic clk_o
-);
-endmodule
-
-(* blackbox *)
-module cluster_clock_gating (
-    input  logic clk_i,
-    input  logic en_i,
-    input  logic test_en_i,
-    output logic clk_o
-);
-endmodule
-
-(* blackbox *)
-module cluster_clock_inverter (
-    input  logic clk_i,
-    output logic clk_o
-);
-endmodule
-
-(* blackbox *)
-module cv32e40p_clock_gate (
-    input  logic clk_i,
-    input  logic en_i,
-    input  logic scan_cg_en_i,
-    output logic clk_o
-);
-endmodule
 
 // --- Memories --------------------------------------------------------------
 // One-cycle read latency, byte enables, active-low chip select and write

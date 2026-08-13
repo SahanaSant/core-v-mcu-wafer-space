@@ -41,6 +41,14 @@ SRAM and it should stay visible. Note that arm is hardcoded to two corners, so `
 works against a library carrying both; ticket 15 measured `gf180mcu_as_sc_mcu7t3v3` on area
 alone for that reason.
 
+Ticket 16 attached two conditions to `make area`. **Its flattened total is good to roughly
+0.3% and no better**: adding the clock cells cost a measured 3,776 um2 and moved the flattened
+total 8,741 um2 the *other* way, because removing 70 hierarchy boundaries made ABC remap the
+whole design. Quote the new total, as this map already requires, but do not read a sub-1%
+delta as a saving. And the **`SCL=` override no longer works for other standard-cell
+libraries**, because `gf180_clk_gate.sv` names cells from `gf180mcu_fd_sc_mcu7t5v0`. Nothing
+needs it: `gf180mcu_as_sc_mcu7t3v3` is dead on measurement.
+
 `make pdk` builds the PDK from source as of ticket 15 and takes about ten minutes per attempt,
 plus two to clone. It is not reliable in one pass: magic segfaults intermittently on the
 efabless pad cell, so the build retries up to four times and a cold run can take half an hour.
@@ -186,6 +194,24 @@ signed ECA covering the commit author.
   Ticket 18 gains its answer: `gf180mcu_ocd_io__vdd` bonds the core rail with DVDD and DVSS
   explicitly unconnected, against a foundry `dvdd` pad with no VDD port at all, and the library
   is characterised at 5.0 V as well as 3.3 V.
+- [16 Write the GF180MCU clock cells](issues/16-clock-cells.md)
+  — **Written and measured: 70 instances, three cells, `rtl/gf180mcu/gf180_clk_gate.sv`.**
+  `icgtp_1` is a bit-exact match to upstream's own behavioural ICG, down to `E|TE` being ORed
+  before the latch, and `TE` is a real pin so no test enable is ORed in RTL. `clkinv_1` for
+  both inverter families. **There is no glitch-free clock mux and the design does not want
+  one**: all eight instances select between phase variants of a single clock (SPI CPHA and
+  CPOL, JTAG TCK, uDMA divider bypass), upstream's own implementations are the plain ternary,
+  and break-before-make cannot be built behind a port list with no reset without patching every
+  instantiation site and propagating X into the clock. All three cells are instantiated rather
+  than inferred, which is what upstream's `tech_cells_generic` README instructs. One flow
+  change makes that legal: `read_liberty -lib` before the RTL, since yosys-slang can only
+  black-box a module some earlier yosys command loaded, now shared from `filelist.sh`; the
+  price is that **`make area SCL=<other>` no longer resolves**. Cost is 3,776 um2, which the
+  hierarchical pass returns exactly. The flattened pass came out 8,741 um2 *lower*, almost all
+  ABC remapping, which sets a **precision floor of roughly 0.3% on `make area`** that every
+  later ticket has to respect. Gate-level simulation is now pinned to a UDP-capable simulator:
+  the ICG model is built on a Verilog primitive, so Verilator is out and the container's
+  Icarus 14.0 is in.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -218,10 +244,18 @@ trigger resolves.
   What is left is genuinely not sharp yet, because it cannot be asked before there is a
   floorplan: how much hold fixing the flow needs, what the clock tree costs once one exists
   for the 10,130-load clock net, and whether wire RC eats the 50% margin at 5.0 V or the 27%
-  at 3.3 V. Graduates from the first full harden.
+  at 3.3 V. Graduates from the first full harden. Ticket 16 made the first of those concrete:
+  the clock net now has **54 real clock gates in it** rather than transparent black boxes, so
+  they are 54 points CTS has to balance to rather than an abstraction.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
-  technology-cell work.
+  technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
+  Verilog user-defined primitive, one of four in
+  `libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/primitives.v`, and carries a `specify` block with
+  `$setup`/`$hold`/`$width` checks. **Verilator supports neither, so it is out.** The container
+  ships Icarus Verilog 14.0, which handles both, and the harness will read
+  `gf180mcu_fd_sc_mcu7t5v0.v` and `primitives.v` from the PDK rather than compiling the netlist
+  standalone.
 - **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
   needs, which are discovered by running into false errors. Graduates from a first full
   harden. Ticket 15 added one known input: `gf180mcu_ocd_io`'s LibreLane config sets

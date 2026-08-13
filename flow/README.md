@@ -60,6 +60,15 @@ eFPGA out of the resulting file list, adds `rtl/gf180mcu/` and `flow/synth/stubs
 the front end. It ends by printing every module the design instantiates but does not define,
 which is the work list for `rtl/gf180mcu/`.
 
+**The liberty has to be read before the RTL.** As of ticket 16,
+`rtl/gf180mcu/gf180_clk_gate.sv` instantiates three PDK cells by name, and yosys-slang will
+import an instance as a black box only if some earlier yosys command already loaded that
+module. `flow/synth/filelist.sh` resolves the standard-cell liberty and both `elaborate.sh`
+and `area.sh` open with `read_liberty -lib` on it. LibreLane's own synthesis step already
+does this, so no config setting follows from it, but a hand-written yosys script that reads
+the RTL first will stop on an unknown module rather than degrade gracefully. Reading the
+liberty is also what gives those cells real area in `stat -liberty` instead of zero.
+
 Two settings the flow config has to match. `-D SYNTHESIS` is passed, which only disables
 assertion blocks here; the `SCM_IMPLEMENTED` and `SCM_BASED_ICACHE` defines it switches on in
 `pulp_soc_defines.svh` are referenced nowhere in the RTL. `PULP_FPGA_EMUL` is left undefined,

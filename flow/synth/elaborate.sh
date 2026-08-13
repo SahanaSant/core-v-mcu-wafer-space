@@ -14,10 +14,16 @@ set -eu
 
 . "${ROOT:-/foss/designs}/flow/synth/filelist.sh"
 
+gf180_liberty
 gf180_filelist
 
+# `read_liberty -lib` comes first so the standard cells exist as yosys modules
+# before slang runs. rtl/gf180mcu/gf180_clk_gate.sv instantiates three of them by
+# name, and slang imports an instance as a black box only when a previous yosys
+# command loaded the module; without this it stops on an unknown module instead.
 echo "==> elaborating $TOP with yosys-slang"
 yosys -l "$BUILD/elaborate.log" -p "
+    read_liberty -lib $LIB
     plugin -i slang
     read_slang -F gf180.f -D SYNTHESIS --top $TOP --keep-hierarchy --error-limit=0
     hierarchy -check -top $TOP
