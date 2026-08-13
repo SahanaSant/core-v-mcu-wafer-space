@@ -32,11 +32,12 @@ TARGET_DENSITY = 0.35
 # between libraries that resolve to the same reference cell; across libraries,
 # compare the um2.
 GE_CELL_PREFIX = "nand2_"
-# mm2 per KiB for the two macros ticket 11 is choosing between.
-SRAM_DENSITY = (
-    ("gf180mcu_fd_ip_sram, foundry", 0.409),
-    ("gf180mcu_ocd_ip_sram, ticket 07", 0.155),
-)
+# Ticket 11's planning figure for the routing channels a macro array needs on top
+# of the macros themselves: 12% on a 4x4 array of sram1024x8, from 148 nets
+# escaping each row's bottom edge at Metal3's 0.56 um pitch. It is an estimate,
+# unlike everything else in this report, and ticket 21 replaces it with a
+# floorplan.
+MACRO_CHANNEL_OVERHEAD = 0.12
 
 
 def liberty_ge_area(path, scl):
@@ -119,11 +120,11 @@ def read_modules(log):
     return out
 
 
-def read_cell_histogram(netlist, scl):
-    """Count standard-cell instances in a written netlist."""
+def read_cell_histogram(netlist, prefix):
+    """Count instances of cells named `<prefix>__*` in a written netlist."""
     if not netlist.exists():
         return Counter()
-    pat = re.compile(rf"^\s+({re.escape(scl)}__[a-z0-9_]+)\s")
+    pat = re.compile(rf"^\s+({re.escape(prefix)}__[a-z0-9_]+)\s")
     hist = Counter()
     with open(netlist) as fh:
         for line in fh:
@@ -131,6 +132,32 @@ def read_cell_histogram(netlist, scl):
             if m:
                 hist[m.group(1)] += 1
     return hist
+
+
+def read_lef_sizes(lef_dir):
+    """Macro name -> area in um2, from LEF `SIZE`.
+
+    This is deliberately not the liberty. Every gf180mcu_ocd_ip_sram liberty is a
+    foundry liberty with the header swapped and the address bus resized, so its
+    `area` field describes the macro it was copied from: 209,400 um2 declared for
+    the sram1024x8 against a real 155,414, and 3.2x out on the sram64x8. LEF
+    geometry is the only measured area these macros have. See ticket 20.
+    """
+    macro_re = re.compile(r"^\s*MACRO\s+(\S+)")
+    size_re = re.compile(r"^\s*SIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)")
+    sizes = {}
+    for path in sorted(Path(lef_dir).glob("*.lef")):
+        name = None
+        for line in path.read_text().splitlines():
+            m = macro_re.match(line)
+            if m:
+                name = m.group(1)
+                continue
+            m = size_re.match(line)
+            if m and name:
+                sizes[name] = float(m.group(1)) * float(m.group(2))
+                name = None
+    return sizes
 
 
 class Tree:
@@ -162,6 +189,8 @@ def main():
     ap.add_argument("--clock-period", type=float, required=True)
     ap.add_argument("--logs", required=True, help="directory area.sh wrote to")
     ap.add_argument("--top", default="core_v_mcu")
+    ap.add_argument("--sram", help="macro library name, e.g. gf180mcu_ocd_ip_sram")
+    ap.add_argument("--sram-lef-dir", help="that library's lef/ directory")
     args = ap.parse_args()
 
     logs = Path(args.logs)
@@ -177,9 +206,11 @@ def main():
     w(f"# Logic area: `{args.top}` on `{args.scl}`")
     w("")
     w(
-        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. The "
-        "memories, the clock cells, the boot ROM and `apb_pll` are black boxes, and "
-        "there are no pads, no floorplan and no PDN. This is the logic and nothing else."
+        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. The boot "
+        "ROM and `apb_pll` are black boxes, the SRAM macros are real instances with no "
+        "area in this liberty, and there are no pads, no floorplan and no PDN. The cell "
+        "areas below are standard cells and nothing else; the macros are counted "
+        "separately, from LEF."
     )
     w("")
     w(f"Gate equivalent: `{ge_cell}` = {ge:.3f} um2, read from the liberty.")
@@ -204,20 +235,62 @@ def main():
         )
     w("")
 
+    macros = Counter()
+    lef = {}
+    if args.sram and args.sram_lef_dir:
+        macros = read_cell_histogram(logs / f"{args.top}.flat.v", args.sram)
+        lef = read_lef_sizes(args.sram_lef_dir)
+
     if flat:
         placed = flat["area"] / TARGET_DENSITY
-        left = CORE_AREA_UM2 - placed
+        macro_area = sum(n * lef.get(m, 0.0) for m, n in macros.items())
+        array = macro_area * (1 + MACRO_CHANNEL_OVERHEAD)
+
+        w("## Silicon budget")
+        w("")
         w(
-            f"Placed at `PL_TARGET_DENSITY_PCT: {TARGET_DENSITY * 100:.0f}` the "
-            f"flattened logic occupies **{placed / 1e6:.2f} mm2** of the 12.92 mm2 "
-            f"core, leaving **{left / 1e6:.2f} mm2**."
+            f"A 1x1 slot has {CORE_AREA_UM2 / 1e6:.2f} mm2 of core. Standard cells are "
+            f"placed at `PL_TARGET_DENSITY_PCT: {TARGET_DENSITY * 100:.0f}`, which is "
+            "the wafer.space template's default and the optimistic end of what Run 1 "
+            "achieved. Macro area is LEF geometry, never liberty."
         )
         w("")
-        w("| macro | mm2 per KiB | KiB in the remainder |")
+        w("| item | mm2 | % of core |")
         w("| --- | ---: | ---: |")
-        for macro, per_kib in SRAM_DENSITY:
-            w(f"| {macro} | {per_kib:.3f} | {left / 1e6 / per_kib:.1f} |")
+        w(
+            f"| standard cells, flattened | {flat['area'] / 1e6:.3f} | "
+            f"{100 * flat['area'] / CORE_AREA_UM2:.1f} |"
+        )
+        w(
+            f"| the same, placed at {TARGET_DENSITY * 100:.0f}% | {placed / 1e6:.2f} "
+            f"| {100 * placed / CORE_AREA_UM2:.1f} |"
+        )
+        if macro_area:
+            for m, n in sorted(macros.items()):
+                a = n * lef.get(m, 0.0)
+                w(
+                    f"| {n} x `{m.split('__')[-1]}` | {a / 1e6:.3f} "
+                    f"| {100 * a / CORE_AREA_UM2:.1f} |"
+                )
+            w(
+                f"| macro array, +{MACRO_CHANNEL_OVERHEAD * 100:.0f}% routing channels "
+                f"| {array / 1e6:.2f} | {100 * array / CORE_AREA_UM2:.1f} |"
+            )
+        w(
+            f"| **occupied** | **{(placed + array) / 1e6:.2f}** "
+            f"| **{100 * (placed + array) / CORE_AREA_UM2:.1f}** |"
+        )
+        w(
+            f"| free | {(CORE_AREA_UM2 - placed - array) / 1e6:.2f} "
+            f"| {100 * (CORE_AREA_UM2 - placed - array) / CORE_AREA_UM2:.1f} |"
+        )
         w("")
+        if macros and not macro_area:
+            w(
+                "No LEF was found for the macros above, so the array is missing from "
+                "this arithmetic. Check `--sram-lef-dir`."
+            )
+            w("")
 
     if modules:
         t = Tree(modules)

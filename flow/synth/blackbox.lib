@@ -11,10 +11,10 @@
  * and to let paths terminate somewhere, so that `sta.sh` can report the
  * standard-cell critical path. Two consequences worth stating out loud:
  *
- *   - Paths that start or end at a memory are optimistic by the macro's whole
- *     access time. The foundry sram512x8 is characterised at 164 MHz typical,
- *     so roughly 6 ns is missing from every such path. Ticket 11 picks the
- *     macro; its real Liberty replaces this file for those cells.
+ *   - Paths that start or end at the boot ROM are optimistic by its whole
+ *     access time, since a2_bootrom below is still ideal. The L2 banks are no
+ *     longer: ticket 19 implemented them, so those paths now carry the SRAM
+ *     macro's own liberty arcs, which sta.sh reads alongside this file.
  *   - The clock arrives everywhere at once, because apb_pll is ideal and there
  *     is no clock tree. The clock cells are no longer modelled here: ticket 16
  *     bound them to real GF180MCU cells, so their arcs come from the PDK
@@ -45,9 +45,7 @@ library (core_v_mcu_blackbox) {
     index_2 ("0.0");
   }
 
-  type (be4) { base_type : array; data_type : bit; bit_width : 4; bit_from : 3; bit_to : 0; }
   type (w32) { base_type : array; data_type : bit; bit_width : 32; bit_from : 31; bit_to : 0; }
-  type (a12) { base_type : array; data_type : bit; bit_width : 12; bit_from : 11; bit_to : 0; }
   type (a11) { base_type : array; data_type : bit; bit_width : 11; bit_from : 10; bit_to : 0; }
 
   /* --- Clock source ------------------------------------------------------ */
@@ -110,126 +108,14 @@ library (core_v_mcu_blackbox) {
   }
 
   /* --- Memories ---------------------------------------------------------- */
-  /* Synchronous, one-cycle read. Zero access time, so every path through a
-   * memory is short by the real macro's clk-to-Q. Ticket 11 replaces this. */
-
-  cell (core_v_mcu_interleaved_ram) {
-    interface_timing : true;
-    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
-    pin (rst_ni){ direction : input; capacitance : 0.0; }
-    pin (csn_i) {
-      direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    pin (wen_i) {
-      direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (be_i) {
-      bus_type : be4; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (addr_i) {
-      bus_type : a12; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (wdata_i) {
-      bus_type : w32; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (rdata_o) {
-      bus_type : w32; direction : output;
-      timing () { related_pin : "clk_i"; timing_type : rising_edge;
-                  cell_rise (scalar) { values ("0.0"); }
-                  cell_fall (scalar) { values ("0.0"); }
-                  rise_transition (scalar) { values ("0.0"); }
-                  fall_transition (scalar) { values ("0.0"); } }
-    }
-  }
-
-  cell (core_v_mcu_private_ram) {
-    interface_timing : true;
-    pin (clk_i) { direction : input; clock : true; capacitance : 0.0; }
-    pin (rst_ni){ direction : input; capacitance : 0.0; }
-    pin (csn_i) {
-      direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    pin (wen_i) {
-      direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (be_i) {
-      bus_type : be4; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (addr_i) {
-      bus_type : a12; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (wdata_i) {
-      bus_type : w32; direction : input; capacitance : 0.0;
-      timing () { related_pin : "clk_i"; timing_type : setup_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-      timing () { related_pin : "clk_i"; timing_type : hold_rising;
-                  rise_constraint (constraint) { values ("0.0"); }
-                  fall_constraint (constraint) { values ("0.0"); } }
-    }
-    bus (rdata_o) {
-      bus_type : w32; direction : output;
-      timing () { related_pin : "clk_i"; timing_type : rising_edge;
-                  cell_rise (scalar) { values ("0.0"); }
-                  cell_fall (scalar) { values ("0.0"); }
-                  rise_transition (scalar) { values ("0.0"); }
-                  fall_transition (scalar) { values ("0.0"); } }
-    }
-  }
+  /* The two L2 banks are gone from here: ticket 19 implemented them, so the
+   * netlist carries gf180mcu_ocd_ip_sram__sram1024x8m8wm1 instances and sta.sh
+   * reads that macro's own liberty alongside this file. Read those arcs with
+   * ticket 20 in hand: they are the foundry sram512x8's numbers under an OCD
+   * cell name, pessimistic rather than characterised.
+   *
+   * The boot ROM below is still ideal, so any path through it is short by the
+   * real macro's whole access time. Ticket 04 replaces it. */
 
   cell (a2_bootrom) {
     interface_timing : true;

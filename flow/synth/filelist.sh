@@ -9,7 +9,7 @@
 # in one place.
 #
 # On return from gf180_filelist, $WORK/gf180.f is a yosys `-F` command file and
-# $WORK is the cwd. gf180_liberty sets $LIB.
+# $WORK is the cwd. gf180_liberty sets $LIB and $LIBS.
 
 ROOT=${ROOT:-/foss/designs}
 CORE=openhwgroup.org:systems:core-v-mcu
@@ -30,13 +30,26 @@ WORK=$BUILD/build/openhwgroup.org_systems_core-v-mcu_0/default-verilator
 # rather than the PDK LibreLane default's 5.0 V. Note this is still
 # gf180mcu_fd_sc_mcu7t5v0: the `5v0` is the oxide, and the library carries all
 # 229 cells at every one of its fifteen corners with identical geometry.
+#
+# The SRAM macro comes the same way and for the same reason: ticket 19 wrote
+# rtl/gf180mcu/gf180_l2_ram.sv against gf180mcu_ocd_ip_sram__sram1024x8m8wm1, so
+# slang needs that module loaded before it reads the RTL. Its area is *not*
+# taken from here, because every OCD liberty is a foundry liberty with the header
+# swapped: the area field is 1.35x the real macro and the timing is the foundry
+# 512x8's. `stat -liberty $LIB` is given the standard-cell liberty alone, so the
+# macros stay out of the cell-area total and area_report.py adds them back from
+# LEF geometry. See ticket 20.
 gf180_liberty() {
     PDK=${PDK:-gf180mcuD}
     SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
+    SRAM=${SRAM:-gf180mcu_ocd_ip_sram}
+    SRAM_MACRO=${SRAM_MACRO:-gf180mcu_ocd_ip_sram__sram1024x8m8wm1}
     LIB_CORNER=${LIB_CORNER:-ss_125C_3v00}
     PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
     LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
     LIB=$LIBDIR/${SCL}__${LIB_CORNER}.lib
+    SRAM_LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SRAM/lib
+    SRAM_LIB=$SRAM_LIBDIR/${SRAM_MACRO}__${LIB_CORNER}.lib
 
     # Ticket 15 built the PDK for gf180mcuD alone, so a wrong variant name no
     # longer resolves to a real populated directory. Assert anyway: the
@@ -47,6 +60,10 @@ gf180_liberty() {
         exit 1
     }
     [ -r "$LIB" ] || { echo "error: no liberty at $LIB" >&2; exit 1; }
+    [ -r "$SRAM_LIB" ] || { echo "error: no liberty at $SRAM_LIB" >&2; exit 1; }
+
+    # Every liberty yosys has to load, in read order.
+    LIBS="$LIB $SRAM_LIB"
 }
 
 gf180_filelist() {
@@ -72,7 +89,8 @@ gf180_filelist() {
 
     # The GF180MCU target's own sources, plus black boxes for the technology
     # cells that have not been written yet. The PDK cells that gf180_clk_gate.sv
-    # instantiates are not here: they arrive from the liberty, see gf180_liberty.
+    # and gf180_l2_ram.sv instantiate are not here: they arrive from the liberty,
+    # see gf180_liberty.
     find "$ROOT/rtl/gf180mcu" -name '*.sv' | sort >>"$WORK/gf180.f"
     echo "$ROOT/flow/synth/stubs.sv" >>"$WORK/gf180.f"
 

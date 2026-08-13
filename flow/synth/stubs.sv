@@ -7,9 +7,10 @@
 // This is the definitive list, measured by elaborating the SoC (see
 // `flow/synth/elaborate.sh`), not a guess: with the eFPGA replaced by
 // `rtl/gf180mcu/gf180_efpga_stub.sv`, ten modules were left unresolved. Ticket
-// 16 wrote the six clock cells, so four are left. Upstream supplies them per
-// target, from `emulation/xilinx/` for the FPGA and from `rtl/simulation/` for
-// simulation; the GF180MCU implementations belong in `rtl/gf180mcu/`.
+// 16 wrote the six clock cells and ticket 19 the two L2 memories, so two are
+// left. Upstream supplies them per target, from `emulation/xilinx/` for the FPGA
+// and from `rtl/simulation/` for simulation; the GF180MCU implementations belong
+// in `rtl/gf180mcu/`.
 //
 // Each stub here is empty on purpose. It carries the port list so the hierarchy
 // closes and synthesis has something to instantiate, and it disappears from
@@ -17,40 +18,10 @@
 // identical to the instantiation sites; the widths below are upstream's.
 
 // --- Memories --------------------------------------------------------------
-// One-cycle read latency, byte enables, active-low chip select and write
-// enable. ADDR_WIDTH is set by the bank configuration in l2_ram_multi_bank.sv,
-// which ticket 11 decides.
-
-(* blackbox *)
-module core_v_mcu_interleaved_ram #(
-    parameter ADDR_WIDTH = 12
-) (
-    input  logic                  clk_i,
-    input  logic                  rst_ni,
-    input  logic                  csn_i,
-    input  logic                  wen_i,
-    input  logic [           3:0] be_i,
-    input  logic [ADDR_WIDTH-1:0] addr_i,
-    input  logic [          31:0] wdata_i,
-    output logic [          31:0] rdata_o
-);
-endmodule
-
-(* blackbox *)
-module core_v_mcu_private_ram #(
-    parameter ADDR_WIDTH = 12
-) (
-    input  logic                  clk_i,
-    input  logic                  rst_ni,
-    input  logic                  csn_i,
-    input  logic                  wen_i,
-    input  logic [           3:0] be_i,
-    input  logic [ADDR_WIDTH-1:0] addr_i,
-    input  logic [          31:0] wdata_i,
-    output logic [          31:0] rdata_o
-);
-endmodule
-
+// The two L2 banks left this file in ticket 19: `rtl/gf180mcu/gf180_l2_ram.sv`
+// binds both upstream names to four ganged `sram1024x8` macros, and the macro
+// itself arrives as a black box from its liberty rather than from here.
+//
 // The boot ROM. Upstream's simulation model initialises itself with $readmemh,
 // which does not synthesise; ticket 04 decides what replaces it.
 (* blackbox *)

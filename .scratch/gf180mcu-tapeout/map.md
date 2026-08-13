@@ -29,17 +29,25 @@ write should start by running it.
 
 `make area` and `make sta` exist as of ticket 10 and take about ten and two minutes. The
 first synthesises to standard cells twice, flattened and hierarchical, and writes
-`flow/build/area/area.md`: totals, kGE, placed area, the implied SRAM budget, and a
-per-module breakdown by instance path. The second reports the critical path as logic depth
-at both supply corners. Any ticket that removes or reconfigures RTL should quote the new
-flattened total rather than describing what it expects to have saved.
+`flow/build/area/area.md`: totals, kGE, placed area, macro area from LEF, the occupancy
+arithmetic and a per-module breakdown by instance path. Any ticket that removes or
+reconfigures RTL should quote the new flattened total rather than describing what it expects
+to have saved.
+
+**`make sta` is the exception: do not quote its headline.** Ticket 19 established that it
+reports the path with the worst pre-layout slack, which is set by unbuffered fanout rather than
+by depth, so it is not the deepest path and it changes identity under changes to unrelated
+blocks. The same netlist that reports 35 stages carries a 90-stage path inside the CV32E40P.
+Ticket 22 owns both the metric and the timing conclusion that rested on it.
 
 As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
 clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
 5.0 V as a second arm, because that margin is what the design gave up to reach the denser
 SRAM and it should stay visible. Note that arm is hardcoded to two corners, so `make sta` only
 works against a library carrying both; ticket 15 measured `gf180mcu_as_sc_mcu7t3v3` on area
-alone for that reason.
+alone for that reason. Since ticket 19 the 5.0 V arm is also **mixed-corner**: the OCD SRAM has
+no `ss_125C_4v50`, which is what ticket 14 settled the supply on, so that arm runs standard cells
+at 4v50 against SRAM arcs from 3v00 and prints a note saying so.
 
 Ticket 16 attached two conditions to `make area`. **Its flattened total is good to roughly
 0.3% and no better**: adding the clock cells cost a measured 3,776 um2 and moved the flattened
@@ -56,15 +64,20 @@ Budget an hour and keep it off the critical path of anything time-boxed. Both `m
 `make sta` take an `SCL=` override, and `flow/synth/latch_map/` holds a map for any library the
 PDK does not ship one for.
 
-Ticket 11 committed the memory and left one standing trap behind it. The configuration is
-**16 KiB of L2: sixteen `gf180mcu_ocd_ip_sram__sram1024x8m8wm1`, two interleaved channels of
-4 KiB plus two private banks of 4 KiB, contiguous from `0x1C00_0000` to `0x1C00_4000`.** The trap
+Ticket 11 committed the memory, ticket 19 built it, and one standing trap sits behind them. The
+configuration is **16 KiB of L2: sixteen `gf180mcu_ocd_ip_sram__sram1024x8m8wm1`, two interleaved
+channels of 4 KiB plus two private banks of 4 KiB, contiguous from `0x1C00_0000` to
+`0x1C00_4000`**, and it is in the RTL as of ticket 19: `rtl/gf180mcu/gf180_l2_ram.sv` plus four
+patched upstream files on the submodule's local `master`. The trap
 is that **nothing in `gf180mcu_ocd_ip_sram` was characterised**: every Liberty file is a foundry
 Liberty file with the header swapped and the address bus resized, so its timing, power and
 `area` all describe a different macro. Take macro area from LEF `SIZE`, never from Liberty, where
 the error runs to 3.2x. Never conclude that an OCD macro matches a foundry one on timing, because
 that compares a file with itself. And the `sram1024x8` Verilog specify block, the one piece of
-3.3 V data that exists, is 2x optimistic on access time. Ticket 20 owns all of it.
+3.3 V data that exists, is 2x optimistic on access time. Ticket 20 owns all of it. Ticket 19 built
+the defences: `area_report.py` reads LEF geometry, and `stat -liberty` is handed the standard-cell
+library alone so the macros contribute no area at all rather than the wrong area. Both are
+load-bearing, and neither warns if a later change undoes it.
 
 Standing preferences for this effort:
 
@@ -238,6 +251,23 @@ signed ECA covering the commit author.
   graduates the floorplan; ticket 19 writes the wrappers. Also settled: `L2_BANK_SIZE = 29184`
   becomes 1024 and agrees with `BANK_SIZE_INTL_SRAM`, and **there is no execute-in-place path**, so
   external flash never reduces the SRAM requirement.
+- [19 Write the L2 SRAM wrappers and re-measure](issues/19-l2-sram-wrappers.md)
+  — **Built, and it cost negative area, but `make sta` turned out to be measuring the wrong
+  thing.** One file, `rtl/gf180mcu/gf180_l2_ram.sv`, binds both upstream names to one 1024 x 32
+  body of four ganged macros; 1024 words is the macro's whole depth so there is no depth decoding
+  and no output mux, and `ADDR_WIDTH` other than 10 is an elaboration error. Two black boxes left,
+  `a2_bootrom` and `apb_pll`. The flattened netlist fell from 118,290 cells and 3,407,908 um2 to
+  **114,244 and 3,349,208**, 1.7% and so well outside the 0.3% floor, but the saving is ticket
+  11's parameters rather than the wrappers: `NB_L2_CHANNELS` 4 to 2 deletes two crossbar ports and
+  `L2_BANK_SIZE` 29184 to 1024 narrows every uDMA address register from 15 bits to 10. Occupancy
+  is **95.6%** against ticket 11's predicted 97%, so ticket 12 is still a precondition. `make
+  area` now closes the whole budget itself, macro area from LEF `SIZE` because `stat -liberty`
+  excludes the macros by construction. **The finding is timing**: `make sta` came back 84 stages
+  and 135% of budget against ticket 10's 35 and 58%, so it was A/B'd. The baseline reproduces 35
+  stages, but querying the baseline netlist directly returns a **90-stage path inside the
+  CV32E40P** that lost the ranking by 13 ns of unbuffered fanout. `report_checks` ranks by
+  pre-layout slack, not depth, so the headline was never logic depth and can move 2.4x on an
+  unrelated change. That opened ticket 22.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -252,28 +282,37 @@ In scope, but not sharp enough to ticket. Each patch graduates when the ticket n
 trigger resolves.
 
 - **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
-  16 took the clock cells out of it, and ticket 11 specified the two memories, so
-  `gf180_interleaved_ram.sv` and `gf180_private_ram.sv` are ticket 19 rather than fog. Two files
-  are left, each waiting on a decision rather than on sharpness: `gf180_bootrom.sv` from ticket
-  04, and `gf180_clk_gen.sv` from ticket 05, which provides `apb_pll` in its entirety rather than
-  a PLL cell inside it. Pad wrappers have left this patch: nothing in the SoC instantiates a pad
-  cell, so `gf180_pads.sv` is `chip_top` work and graduates with the floorplan.
+  16 took the clock cells out of it and ticket 19 the two memories, which landed as one
+  `gf180_l2_ram.sv` rather than the two files the table expected. **Two files are left**, each
+  waiting on a decision rather than on sharpness: `gf180_bootrom.sv` from ticket 04, and
+  `gf180_clk_gen.sv` from ticket 05, which provides `apb_pll` in its entirety rather than a PLL
+  cell inside it. They are also the last two black boxes `make elaborate` reports, so that
+  command's output is now a two-line to-do list. Pad wrappers have left this patch: nothing in
+  the SoC instantiates a pad cell, so `gf180_pads.sv` is `chip_top` work and graduates with the
+  floorplan.
 - **Software and the boot image.** Whether `sw/` exists at all, what it contains, and how it
   is built and loaded. Graduates from ticket 04. Ticket 11 fixed the target it has to hit: 16 KiB
   contiguous from `0x1C00_0000`, **no execute-in-place path anywhere in the design**, and every
   upstream boot address (`0x1C00_8080`, `0x1C00_0880`, and the `0x1C07_C000` linker origin) now
   outside the memory that exists.
-- **Timing closure.** Ticket 10 answered the first two thirds: 25 MHz holds on logic depth at
-  both voltages, and the critical path lands in the AXI crossbar, which is now ticket 17.
-  What is left is genuinely not sharp yet, because it cannot be asked before there is a
-  floorplan: how much hold fixing the flow needs, what the clock tree costs once one exists
-  for the 10,130-load clock net, and whether wire RC eats the 50% margin at 5.0 V or the 27%
-  at 3.3 V. Graduates from the first full harden. Ticket 16 made the first of those concrete:
-  the clock net now has **54 real clock gates in it** rather than transparent black boxes, so
-  they are 54 points CTS has to balance to rather than an abstraction. Ticket 11 added a second:
-  the SRAM access path is roughly 16 ns of the 50 ns budget at `ss_125C_3v00`, but that number is
-  the foundry macro's, quoted for a macro nobody characterised, so it is a placeholder that
-  ticket 20 has to either justify or replace.
+- **Timing closure.** Ticket 10 looked answered and is not. **Ticket 19 withdrew its headline
+  result**: `make sta` ranks paths by pre-layout slack rather than depth, so "25 MHz holds on
+  logic depth at both voltages" described a 35-stage path that was never the deepest, and the
+  same netlist carries a 90-stage path inside the CV32E40P that is roughly 70 ns at 3.3 V. That
+  is now **ticket 22**, which is sharp and no longer fog, and it has to land before ticket 05
+  picks a clock. What stays in the fog is what still cannot be asked before there is a floorplan:
+  how much hold fixing the flow needs, what the clock tree costs once one exists for the
+  10,122-load clock net, and how much of whatever margin survives ticket 22 that wire RC eats.
+  Graduates from the first full harden. Ticket 16 made one part concrete: the clock net has
+  **54 real clock gates in it** rather than transparent black boxes, so they are 54 points CTS
+  has to balance to rather than an abstraction. Ticket 19 made a second: the SRAM arcs are now
+  real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but that is the foundry macro's timing
+  under an OCD cell name, so it is a pessimistic placeholder ticket 20 has to justify or replace.
+- **Hardening the macros.** `flow/config.yaml` does not exist, so nothing yet tells LibreLane
+  the sixteen macros are there: `macros.yaml` pointing at their LEF, Liberty, GDS and SPICE, the
+  `MAGIC_GDS_FLATGLOB` entries they will need, and `PDN_MACRO_HOOKS` for their Metal2/Metal3
+  perimeter rings. Ticket 19 put the instances in the netlist and stopped at the flow boundary.
+  Mostly ticket 21's, since placement and power routing are the same conversation.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
   technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
@@ -302,8 +341,12 @@ trigger resolves.
   there is no chip. Ticket 11 closed the memory half of it and left the arithmetic exact rather
   than open: logic plus a 2.79 mm² SRAM array is **97% of core**, and 89% once ticket 12 cuts
   `apb_i2cs`. So the remaining question is no longer how much has to be cut, it is whether 89% at
-  35% density actually places, which is ticket 21's to answer and the first thing that could
-  still take the December date away.
+  35% density actually places, which is ticket 21's to answer. Ticket 19 built the configuration
+  and re-measured: occupancy is **95.6%**, not 97%, because ticket 11's parameter set took 1.7%
+  off the logic, and 89% after ticket 12's cut. It also added a **second** candidate for the
+  thing that takes the December date away, alongside the floorplan: ticket 22's finding that the
+  design is roughly 70 ns deep at 3.3 V against a 50 ns budget, which no amount of floorplanning
+  fixes.
 
 ## Out of scope
 

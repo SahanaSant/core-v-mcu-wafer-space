@@ -29,8 +29,14 @@ set -eu
 MODE=${MODE:-both}
 CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
 
-# Sets PDK, SCL, LIB_CORNER, LIBDIR and LIB, and asserts the variant.
+# Sets PDK, SCL, LIB_CORNER, LIBDIR, LIB, SRAM_LIB and LIBS; asserts the variant.
 gf180_liberty
+
+# Every liberty slang needs loaded up front. Only $LIB reaches dfflibmap, abc and
+# stat: the SRAM macros are black boxes to all three, and their liberty area is
+# the wrong macro's, so keeping them out of `stat -liberty` is what makes the
+# cell-area total below standard cells and nothing else.
+READ_LIBS=$(for l in $LIBS; do echo "        read_liberty -lib $l"; done)
 
 # `dfflibmap` maps flip-flops only. Upstream's apb_soc_ctrl infers four latches,
 # and without this they survive as behavioural `always` blocks that OpenSTA
@@ -71,7 +77,7 @@ synth_pass() {
 
     echo "==> synthesising $TOP ($pass, corner $LIB_CORNER, target ${CLOCK_PERIOD_NS} ns)"
     yosys -l "$OUT/synth-$pass.log" -p "
-        read_liberty -lib $LIB
+$READ_LIBS
         plugin -i slang
         read_slang -F gf180.f -D SYNTHESIS --top $TOP --keep-hierarchy --error-limit=0
         hierarchy -check -top $TOP
@@ -103,6 +109,8 @@ echo "==> summarising"
 "$ROOT/flow/synth/area_report.py" \
     --liberty "$LIB" \
     --scl "$SCL" \
+    --sram "$SRAM" \
+    --sram-lef-dir "$PDK_ROOT/$PDK/libs.ref/$SRAM/lef" \
     --clock-period "$CLOCK_PERIOD_NS" \
     --logs "$OUT" \
     | tee "$OUT/area.md"

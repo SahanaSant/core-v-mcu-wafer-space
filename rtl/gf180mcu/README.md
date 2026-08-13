@@ -14,15 +14,14 @@ any RTL change and the list moves with the design.
 
 | Module to provide | Instances | File here | Upstream's version | Notes |
 | --- | --- | --- | --- | --- |
-| `core_v_mcu_interleaved_ram` | 4 | `gf180_interleaved_ram.sv` | `fpga_interleaved_ram.sv` | one per `NB_L2_CHANNELS`, 4 × `sram512x8` per 32-bit word |
-| `core_v_mcu_private_ram` | 2 | `gf180_private_ram.sv` | `fpga_private_ram.sv` | may be dropped entirely, see below |
 | `a2_bootrom` | 1 | `gf180_bootrom.sv` | `a2_bootrom.sv` (sim only) | `$readmemh` does not synthesise |
 | `apb_pll` | 1 | `gf180_clk_gen.sv` | `fpga_pll.sv` | no open GF180 PLL, bypass to the pad |
 
-The six clock cells left this table in ticket 16 and are now in `gf180_clk_gate.sv`;
-see [Clock cells](#clock-cells) below.
+The six clock cells left this table in ticket 16 and are now in `gf180_clk_gate.sv`; see
+[Clock cells](#clock-cells) below. The two L2 memories left it in ticket 19 and are now in
+`gf180_l2_ram.sv`; see [L2 memory](#l2-memory).
 
-Two entries in this table are not what an earlier reading of upstream suggested.
+The remaining entry is not what an earlier reading of upstream suggested.
 
 `apb_pll` is the whole clock generator, not a PLL cell inside one. Upstream's ASIC build
 takes `rtl/apb_fll_if/apb_pll.sv`, which wraps a `PLL18_TOP` hard macro, and its FPGA build
@@ -121,52 +120,91 @@ a trace. The four TCDM master ports into L2 never request, so the interconnect p
 them should constant-fold away in synthesis. Whether they actually do is worth checking in
 ticket 10's per-module breakdown.
 
-## SRAM pin mapping
+## L2 memory
 
-`gf180mcu_fd_ip_sram__sram512x8m8wm1` is 512 words × 8 bits, 431.86 × 484.88 µm. A 32-bit
-word needs four of them side by side; anything deeper than 512 words needs depth decoding and
-an output mux on top.
+Two module names, one implementation, six instances, all in `gf180_l2_ram.sv`. Ticket 11 sized
+the interleaved and private banks the same, at 4 KiB each, so upstream's two names bind to one
+1024 x 32 body the way the six clock-cell names bind to three cells.
+
+| Module | Instances | Built from |
+| --- | ---: | --- |
+| `core_v_mcu_interleaved_ram` | 2 | 4 x `gf180mcu_ocd_ip_sram__sram1024x8m8wm1` |
+| `core_v_mcu_private_ram` | 2 | the same |
+
+Two interleaved channels rather than upstream's four: `NB_L2_CHANNELS` is 2 in
+`rtl/includes/pulp_soc_defines.svh`. Sixteen macros in total, 16 KiB, contiguous from
+`0x1C00_0000` with private bank 0 first, then private bank 1, then the interleaved region to
+`0x1C00_4000`.
+
+### Pin mapping
+
+`gf180mcu_ocd_ip_sram__sram1024x8m8wm1` is 1024 words x 8 bits, 301.30 x 515.81 um from its
+LEF. Four side by side make a 32-bit word, and 1024 words is the macro's whole depth, so there
+is **no depth decoding and no output mux**: the wrapper is four macros and nothing else, and
+`ADDR_WIDTH` other than 10 is an elaboration error rather than a silent aliasing bug.
 
 | Wrapper signal | SRAM pin | Notes |
 | --- | --- | --- |
 | `clk_i` | `CLK` | rising edge |
 | `csn_i` | `CEN` | already active low, connect directly |
-| `wen_i` | `GWEN` | global write enable, active low |
-| `be_i[3:0]` | `WEN[7:0]` per macro | expand each byte enable across its macro's mask, active low |
-| `addr_i` | `A[8:0]` | 512 words per macro, upper bits select the depth slice |
-| `wdata_i[31:0]` | `D[7:0]` × 4 | split by byte lane |
-| `rdata_o[31:0]` | `Q[7:0]` × 4 | concatenate byte lanes, then mux by depth slice |
+| `wen_i` | `GWEN` | already active low, connect directly |
+| `be_i[k]` | `WEN[7:0]` on macro `k` | `{8{~be_i[k]}}`, so a masked lane sees all ones |
+| `addr_i` | `A[9:0]` | word address, unmodified |
+| `wdata_i[8k+:8]` | `D[7:0]` on macro `k` | one byte lane per macro |
+| `rdata_o[8k+:8]` | `Q[7:0]` on macro `k` | one byte lane per macro |
 
-The wrapper must present one-cycle read latency to match the TCDM handshake that
-`l2_ram_multi_bank.sv` already implements. Verify against the behavioural `generic_memory`
-model in `rtl/simulation/core_v_mcu_sim_ram.sv` before trusting it.
+The masking works without gating `CEN` because the macro's write condition is
+`!CEN & !GWEN & !(&WEN)` and its read condition is `!CEN & GWEN`. A masked lane on a write
+cycle therefore neither writes nor reads and holds `Q`, which is all the TCDM handshake needs:
+it ignores read data on a write. Read latency is one cycle, matching the `r_valid` register
+`l2_ram_multi_bank.sv` already had.
+
+`rst_ni` reaches the wrapper and stops there. The macro has no reset and comes up undefined,
+as it does on FPGA.
+
+### The macro data that is not trustworthy
+
+**Take macro area from LEF `SIZE`, never from Liberty.** Every Liberty in
+`gf180mcu_ocd_ip_sram` is a foundry Liberty with the header swapped and the address bus
+resized, so the `sram1024x8`'s `area` field is the foundry `sram512x8`'s 209,400 um2 against a
+real 155,414, and its `memory() { address_width }` says 9 against ten address pins. The timing
+is the foundry 512x8's throughout: `CLK` to `Q` reads 13.46 to 15.87 ns at `ss_125C_3v00`,
+which is a pessimistic proxy rather than characterisation, and the one re-derived number
+anywhere in the library, the `sram1024x8` Verilog specify block, is **2x optimistic**. Ticket
+20 owns all of it. `flow/synth/area_report.py` reads LEF geometry for exactly this reason, and
+`flow/synth/filelist.sh` hands the Liberty to slang for module definitions only, never to
+`stat -liberty`.
 
 ## Area budget
 
-A `1x1` slot has 12.92 mm² of core area. **Logic takes about 9.75 mm² of it**, measured with
-`make area`: 3.42 mm² of standard cells placed at `PL_TARGET_DENSITY_PCT: 35`. That leaves
-**3.16 to 3.18 mm²**, and it is the number every memory decision has to fit inside.
+The sizing question is closed: ticket 11 chose the configuration and ticket 19 built it, so
+this is now an occupancy measurement rather than a menu. `make area` writes it to
+`flow/build/area/area.md` and re-derives it on every run.
 
-The range is not hedging. Ticket 10 measured 3.417 mm² and ticket 16 measured 3.408 after
-adding 3,776 um² of clock cells, because removing 70 hierarchy boundaries made ABC remap the
-whole design. Read the flattened total as good to roughly 0.3% and no better, and do not treat
-a 0.02 mm² move in the remainder as a real saving.
+| item | mm2 | % of the 12.92 mm2 core |
+| --- | ---: | ---: |
+| standard cells, flattened | 3.35 | 25.9 |
+| the same, placed at `PL_TARGET_DENSITY_PCT: 35` | 9.57 | 74.1 |
+| 16 x `sram1024x8m8wm1`, from LEF | 2.49 | 19.2 |
+| macro array, +12% routing channels | 2.79 | 21.6 |
+| **occupied** | **12.35** | **95.6** |
+| free | 0.57 | 4.4 |
 
-| L2 size | Foundry `sram512x8` | Share of what is left | OCD `sram1024x8` | Share |
-| --- | --- | --- | --- | --- |
-| 4 KiB | 1.68 mm² | 53% | 0.62 mm² | 20% |
-| 8 KiB | 3.35 mm² | 106%, does not fit | 1.24 mm² | 39% |
-| 16 KiB | 6.70 mm² | does not fit | 2.48 mm² | 78% |
-| 32 KiB | 13.4 mm² | does not fit | 4.96 mm² | does not fit |
+**95.6% at the template's density, and that density is the optimistic end of Run 1
+experience.** Ticket 11 predicted 97% from ticket 16's netlist; the parameter set it committed
+paid for the difference, since `NB_L2_CHANNELS` 4 to 2 removes two crossbar ports and
+`L2_BANK_SIZE` 29184 to 1024 narrows the uDMA address registers from 15 bits to 10. That is
+118,290 cells and 3,407,908 um2 before, 114,244 and 3,349,208 after: **1.7% smaller**, which is
+well outside the 0.3% precision floor and so a real saving rather than ABC noise.
 
-Foundry SRAM costs 0.409 mm² per KiB and the `gf180mcu_ocd_ip_sram` macro 0.155, from
-ticket 07. The consequence is blunt: **the 16 KiB target is unreachable with the foundry
-macro** without cutting logic first, and reachable with the OCD macro only because it is 2.6x
-denser. Upstream's 512 KiB interleaved plus 64 KiB private would need 241 mm², which is why
-the private banks are the first thing to drop.
+It does not make the chip fit. **Ticket 12's `apb_i2cs` cut is still a precondition**, worth
+about 1.10 mm2 of placed logic, and whether 89% places at all is ticket 21's question. Only the
+channel figure above is an estimate; everything else is measured, macro area from LEF geometry
+and cell area from the standard-cell liberty.
 
-Re-run `make area` after any change that adds or removes RTL. The budget above is a
-measurement with a date on it, not an invariant.
+Read the flattened total as good to roughly 0.3% and no better, per ticket 16, and re-run
+`make area` after any change that adds or removes RTL. The budget above is a measurement with
+a date on it, not an invariant.
 
 ## Conventions
 

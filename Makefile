@@ -40,7 +40,9 @@ PDK_BUILD_HOME := $(PDK_ROOT)/.build-home
 SLOT ?= 1x1
 SCL  ?= gf180mcu_fd_sc_mcu7t5v0
 PAD  ?= gf180mcu_fd_io
-SRAM ?= gf180mcu_fd_ip_sram
+# Ticket 11 committed the OCD macro. It lives in the same libs.ref directory as
+# the foundry sram512x8, which open_pdks also installs there.
+SRAM ?= gf180mcu_ocd_ip_sram
 
 TOP        ?= chip_top
 FINAL_GDS  ?= $(ROOT)/flow/final/gds/$(TOP).gds

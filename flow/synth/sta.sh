@@ -24,6 +24,8 @@ ROOT=${ROOT:-/foss/designs}
 TOP=${TOP:-core_v_mcu}
 PDK=${PDK:-gf180mcuD}
 SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
+SRAM=${SRAM:-gf180mcu_ocd_ip_sram}
+SRAM_MACRO=${SRAM_MACRO:-gf180mcu_ocd_ip_sram__sram1024x8m8wm1}
 CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
 SIGNOFF_CORNER=${LIB_CORNER:-ss_125C_3v00}
 NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
@@ -35,7 +37,27 @@ FANOUT_LIMIT=${FANOUT_LIMIT:-500}
 
 PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
 LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
+SRAM_LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SRAM/lib
 OUT=$ROOT/flow/build/area
+
+# Ticket 19 put sixteen SRAM macros in the netlist, so the L2 paths now need the
+# macro's own liberty rather than blackbox.lib's zero-delay model. That liberty
+# is the foundry sram512x8's timing under an OCD cell name (ticket 20), so read
+# what it reports as a pessimistic proxy, not as characterisation.
+#
+# gf180mcu_ocd_ip_sram has no 4v50 corner at all, which is exactly what ticket 14
+# settled the supply on: 5.0 V would have removed this macro permanently. The
+# informational 5.0 V arm therefore runs the standard cells at 4v50 against SRAM
+# arcs from 3v00 and says so, because what that arm is for is the logic
+# comparison. There is no 5.0 V chip to measure here, only a 5.0 V logic path.
+sram_liberty_for() {
+    lib=$SRAM_LIBDIR/${SRAM_MACRO}__$1.lib
+    if [ -r "$lib" ]; then
+        echo "$lib"
+    else
+        echo "$SRAM_LIBDIR/${SRAM_MACRO}__ss_125C_3v00.lib"
+    fi
+}
 
 [ "$PDK" = gf180mcuD ] || { echo "error: PDK is $PDK, this design is gf180mcuD only" >&2; exit 1; }
 [ -r "$NETLIST" ] || { echo "error: no netlist at $NETLIST, run \`make area\` first" >&2; exit 1; }
@@ -48,12 +70,19 @@ READABLE=$OUT/$(basename "$NETLIST" .v).sta.v
 for corner in ss_125C_3v00 ss_125C_4v50; do
     lib=$LIBDIR/${SCL}__${corner}.lib
     [ -r "$lib" ] || { echo "error: no liberty at $lib" >&2; exit 1; }
+    sram_lib=$(sram_liberty_for "$corner")
+    [ -r "$sram_lib" ] || { echo "error: no liberty at $sram_lib" >&2; exit 1; }
+    case $sram_lib in
+        *__${corner}.lib) ;;
+        *) echo "note: $SRAM has no $corner corner, SRAM arcs are $(basename "$sram_lib" .lib | sed 's/.*__//')" ;;
+    esac
 
     # The SoC clock is generated inside apb_pll, which is still a black box, so
     # there is no clock to find by tracing. Constrain the reference the ASIC
     # build drives and let blackbox.lib's ideal arcs carry it through.
     sta -exit >"$OUT/sta-$corner.log" 2>&1 <<EOF
 read_liberty $lib
+read_liberty $sram_lib
 read_liberty $ROOT/flow/synth/blackbox.lib
 read_verilog $READABLE
 link_design $TOP
@@ -80,6 +109,7 @@ echo
 echo "Highest-fanout nets, which is what the flow has to buffer:"
 sta -exit 2>/dev/null <<EOF | grep '^  ' || true
 read_liberty $LIBDIR/${SCL}__${SIGNOFF_CORNER}.lib
+read_liberty $(sram_liberty_for "$SIGNOFF_CORNER")
 read_liberty $ROOT/flow/synth/blackbox.lib
 read_verilog $READABLE
 link_design $TOP

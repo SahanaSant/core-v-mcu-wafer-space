@@ -2,7 +2,7 @@
 
 Type: grilling
 Status: open
-Blocked by: none
+Blocked by: 22
 
 ## Question
 
@@ -42,6 +42,15 @@ Also from ticket 03: `apb_pll` carries five analog supply ports (`AVDD`, `AVDD2`
 are declared nowhere. They are implicit wires going nowhere, so **no analog supply reaches
 the SoC boundary today**. If the answer here needs an analog supply, that is new hierarchy
 to thread, not a connection to make; if it does not, the ports should come off the module.
+
+**What ticket 19 changed here, and why this is now blocked.** The target frequency cannot be
+chosen yet. `make sta`'s depth number, which every discussion of this ticket has leaned on, is
+not the design's logic depth: it reports the path with the worst pre-layout slack, and the same
+netlist that reports 35 stages carries a 90-stage path inside the CV32E40P, roughly 70 ns at
+3.3 V against the 50 ns budget. Picking a frequency against the old number would pick the wrong
+one. Ticket 22 either restores a defensible margin or establishes that 20 MHz is not reachable,
+and the clock source and reset scheme should be settled in the same conversation as the number
+rather than twice.
 
 ## Definition of done
 
