@@ -39,18 +39,25 @@ The template's defaults encode hard-won knowledge. Change them deliberately, not
 
 ## SystemVerilog front end
 
-Yosys alone will not read upstream's RTL, which uses interfaces, packages and packed structs
-across more than fifty files. Two options, in order of preference:
+**Settled: yosys-slang.** Yosys alone will not read upstream's RTL, which uses interfaces,
+packages and packed structs across more than fifty files, but the `read_slang` plugin shipped
+with Yosys 0.67 in the pinned container reads the whole SoC and elaborates `core_v_mcu` in
+about three seconds. The PULP chain (Bender, Morty, SVase, sv2v) is not needed and Morty and
+SVase are not in the container anyway. In LibreLane this is `USE_SLANG: True` with
+`SLANG_ARGUMENTS: ['--keep-hierarchy']`.
 
-1. `USE_SLANG: True` with `SLANG_ARGUMENTS: ['--keep-hierarchy']`. Both appear commented out
-   in the template config. yosys-slang elaborates PULP Platform designs including
-   Snitch-Cluster and Cheshire, so this is the most likely path to work.
-2. The PULP chain: Bender, Morty, SVase, then sv2v down to Verilog-2005. This is what PULP
-   used for Basilisk and Iguana, and `lip6/core-v-180-mcu` uses sv2v plus svase on CV32E40P
-   specifically. Read their CI before starting.
+Reproduce it with `make elaborate`, which runs `flow/synth/elaborate.sh`. That script asks
+fusesoc to resolve upstream's unmodified `default` target from the submodule, filters the
+eFPGA out of the resulting file list, adds `rtl/gf180mcu/` and `flow/synth/stubs.sv`, and runs
+the front end. It ends by printing every module the design instantiates but does not define,
+which is the work list for `rtl/gf180mcu/`.
 
-Either way, get the design elaborating before touching physical design. That is where the
-schedule risk is.
+Two settings the flow config has to match. `-D SYNTHESIS` is passed, which only disables
+assertion blocks here; the `SCM_IMPLEMENTED` and `SCM_BASED_ICACHE` defines it switches on in
+`pulp_soc_defines.svh` are referenced nowhere in the RTL. `PULP_FPGA_EMUL` is left undefined,
+which is what selects the ASIC branches in `soc_domain.sv` and `safe_domain.sv`; fusesoc's
+`default` target declares it as a parameter defaulting to true, so do not let a backend pass
+it through.
 
 ## Macro placement
 

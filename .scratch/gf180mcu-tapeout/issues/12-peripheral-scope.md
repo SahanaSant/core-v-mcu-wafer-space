@@ -12,6 +12,16 @@ fit alongside the memory, and every peripheral kept is memory given up.
 
 Cut with the numbers from ticket 10's per-module breakdown, not with intuition.
 
+One number is already in. Ticket 03's elaboration found the design's **only two inferred
+memories are both inside the I2C slave**: `FIFO_sync_256x8_apb_to_i2c` and
+`FIFO_sync_256x8_i2c_to_apb`, 4,096 memory bits between them, with no macro behind them. At
+256 bytes each they synthesise to roughly 2,048 flip-flops plus decoding, in a peripheral
+that nothing in the bring-up plan uses and that ticket 06 already lists as competing for pads
+it cannot have. It is the cheapest cut on the table. Note also that `apb_i2cs` is where the
+one upstream source patch this port needed had to go (see ticket 03), and that its
+`i2c_peripheral_interface.v` has a second, uncaught bug a few lines below the patched one:
+the `scl_cnt` branch increments `sda_cnt`, so `scl_cnt` never advances.
+
 Constraints on the answer:
 
 - UART is not negotiable. It is the only practical bring-up and observability path, and it is

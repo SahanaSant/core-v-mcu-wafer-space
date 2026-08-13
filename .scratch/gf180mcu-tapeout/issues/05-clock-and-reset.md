@@ -28,6 +28,21 @@ What is the reset scheme? Async assert with synchronous deassert is the default 
 decide whether `rstn_i` needs debouncing or a power-on reset, and how reset is distributed
 across the clock domains upstream already has.
 
+**What ticket 03 changed here.** The FLL block is not a separate decision from the clock
+source: the module to replace is `apb_pll` itself, and it is the *whole* clock generator.
+Upstream's ASIC version (`rtl/apb_fll_if/apb_pll.sv`) is an APB register file, three
+dividers, three clock muxes and a `PLL18_TOP` hard macro; its FPGA version replaces the
+entire module through `fpga_pll.sv` rather than swapping the macro inside it. GF180MCU takes
+the FPGA route, so `gf180_clk_gen.sv` provides `apb_pll` and decides in one place what the
+registers do, what divides what, and where the clock comes from. Keeping the APB registers
+readable is therefore free; dropping the slot is the option that costs work.
+
+Also from ticket 03: `apb_pll` carries five analog supply ports (`AVDD`, `AVDD2`, `AVSS`,
+`VDDC`, `VSSC`) for the hard PLL, and `soc_peripherals.sv` connects them to identifiers that
+are declared nowhere. They are implicit wires going nowhere, so **no analog supply reaches
+the SoC boundary today**. If the answer here needs an analog supply, that is new hierarchy
+to thread, not a connection to make; if it does not, the ports should come off the module.
+
 ## Definition of done
 
 A named clock source with its pad allocation, a decision on the FLL block, a target frequency

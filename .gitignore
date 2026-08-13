@@ -6,6 +6,9 @@ runs/
 final/
 *.log
 
+# fusesoc file list and elaboration outputs
+/flow/build/
+
 # Generated layout
 gds/
 lef/

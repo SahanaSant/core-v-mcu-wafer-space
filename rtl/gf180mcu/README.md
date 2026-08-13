@@ -7,19 +7,56 @@ sibling of `rtl-simulation` and `emulation-rtl`. Nothing here should contain des
 
 ## What has to be provided
 
-| Upstream Xilinx file | File here | Module to provide | Notes |
-| --- | --- | --- | --- |
-| `fpga_interleaved_ram.sv` | `gf180_interleaved_ram.sv` | `core_v_mcu_interleaved_ram` | 4 × `sram512x8` per 32-bit word |
-| `fpga_private_ram.sv` | `gf180_private_ram.sv` | `core_v_mcu_private_ram` | may be dropped entirely, see below |
-| `fpga_pll.sv` | `gf180_clk_gen.sv` | clock source | no open GF180 PLL, bypass to the pad |
-| `pulp_clock_gating_xilinx.sv` | `gf180_clk_gate.sv` | `pulp_clock_gating` | bind to `gf180mcu_fd_sc_mcu7t5v0__icgtp_*` |
-| `cv32e40p_clock_gate.sv` | `gf180_clk_gate.sv` | `cv32e40p_clock_gate` | same ICG cell |
-| `pad_functional_xilinx.sv` | `gf180_pads.sv` | pad wrappers | wrap `gf180mcu_fd_io` cells |
-| `a2_bootrom.sv` (sim only) | `gf180_bootrom.sv` | `a2_bootrom` | `$readmemh` does not synthesise |
+This is the measured list, not a guess. `make elaborate` reads the whole SoC through
+yosys-slang and ends its report with one line per unresolved module and the number of
+instances of it; the table below is that report, with a home for each entry. Re-run it after
+any RTL change and the list moves with the design.
 
-Treat this table as the starting point, not the final list. The definitive set is whatever
-the first elaboration run reports as missing once the eFPGA is removed. Add rows as they
-surface rather than guessing ahead.
+| Module to provide | Instances | File here | Upstream's version | Notes |
+| --- | --- | --- | --- | --- |
+| `pulp_clock_gating` | 55 | `gf180_clk_gate.sv` | `pulp_clock_gating_xilinx.sv` | bind to `gf180mcu_fd_sc_mcu7t5v0__icgtp_*` |
+| `pulp_clock_mux2` | 8 | `gf180_clk_gate.sv` | `tech_cells_generic` | glitch-free clock mux, in the uDMA clock dividers |
+| `pulp_clock_inverter` | 4 | `gf180_clk_gate.sv` | `tech_cells_generic` | SPI master phase inversion |
+| `cluster_clock_gating` | 1 | `gf180_clk_gate.sv` | `tech_cells_xilinx` | same ICG cell, second naming family |
+| `cluster_clock_inverter` | 1 | `gf180_clk_gate.sv` | `tech_cells_xilinx` | JTAG TAP negedge domain |
+| `cv32e40p_clock_gate` | 1 | `gf180_clk_gate.sv` | `cv32e40p_clock_gate.sv` | same ICG cell, third naming family |
+| `core_v_mcu_interleaved_ram` | 4 | `gf180_interleaved_ram.sv` | `fpga_interleaved_ram.sv` | one per `NB_L2_CHANNELS`, 4 × `sram512x8` per 32-bit word |
+| `core_v_mcu_private_ram` | 2 | `gf180_private_ram.sv` | `fpga_private_ram.sv` | may be dropped entirely, see below |
+| `a2_bootrom` | 1 | `gf180_bootrom.sv` | `a2_bootrom.sv` (sim only) | `$readmemh` does not synthesise |
+| `apb_pll` | 1 | `gf180_clk_gen.sv` | `fpga_pll.sv` | no open GF180 PLL, bypass to the pad |
+
+Two entries in this table are not what an earlier reading of upstream suggested.
+
+`apb_pll` is the whole clock generator, not a PLL cell inside one. Upstream's ASIC build
+takes `rtl/apb_fll_if/apb_pll.sv`, which wraps a `PLL18_TOP` hard macro, and its FPGA build
+replaces the entire module through `fpga_pll.sv`. GF180MCU follows the FPGA route, so
+`gf180_clk_gen.sv` provides `apb_pll` itself: the APB register file, the dividers and the
+clock source. Note its five analog supply ports (`AVDD`, `AVDD2`, `AVSS`, `VDDC`, `VSSC`).
+`soc_peripherals.sv` connects them to undeclared identifiers, so they are implicit wires
+going nowhere and no analog supply reaches the SoC boundary today.
+
+There are **no pad wrappers in this list**. `pad_functional_pd` and `pad_functional_pu` are
+defined in `tech_cells_generic` and in upstream's Xilinx directory but never instantiated:
+`core_v_mcu.sv` exposes `io_in_i` / `io_out_o` / `io_oe_o` as plain ports. Pads are entirely
+a `chip_top` concern, so `gf180_pads.sv` belongs to `rtl/chip/`, not here.
+
+Until a cell is written, `flow/synth/stubs.sv` carries an empty black box for it so the
+hierarchy closes. Delete the stub as each real implementation lands.
+
+## The eFPGA slot
+
+`gf180_efpga_stub.sv` is the one file here that is not a technology cell. It provides
+`efpga_subsystem` with upstream's exact port list and terminates every interface, which is
+how the eFPGA is removed without patching a single upstream file: `soc_peripherals.sv` still
+instantiates it, and the QuickLogic sources simply never enter the file list. They could not
+be read anyway, since they sit inside `protect envelopes.
+
+The APB slot at `0x1A30_0000` stays decoded and answers every access with zero, so software
+that probes the FCB registers reads zeros rather than stalling. The APB-T1 TCDM port answers
+through upstream's own `tcdm_error_slave`, which returns `0xBADACCE5` and is recognisable in
+a trace. The four TCDM master ports into L2 never request, so the interconnect ports feeding
+them should constant-fold away in synthesis. Whether they actually do is worth checking in
+ticket 10's per-module breakdown.
 
 ## SRAM pin mapping
 

@@ -22,6 +22,11 @@ the technology-cell replacement map, the SRAM pin mapping and the area budget.
 `rtl/chip/README.md` has the pad arithmetic. `flow/README.md` has the LibreLane settings
 that matter and why.
 
+`make elaborate` exists as of ticket 03 and takes under ten seconds. It reads the whole SoC
+through yosys-slang and prints every module the design instantiates but does not define. Any
+ticket that changes RTL should end by running it, and any ticket that wonders what is left to
+write should start by running it.
+
 Standing preferences for this effort:
 
 - Measure before committing. The 200 to 300 kGE logic estimate is the weakest number in the
@@ -85,6 +90,16 @@ signed ECA covering the commit author.
   locally so a stray `git submodule update` cannot detach HEAD and orphan the port commits.
   The ECA is deferred until the work goes public; when it does, the commit author email
   `yusefkarim@riseup.net` must be on the Eclipse account or ticket 13's PRs bounce.
+- [03 Get upstream RTL through a SystemVerilog front end](issues/03-sv-front-end.md)
+  — **yosys-slang, first try.** The schedule risk this map was most afraid of is gone: the
+  full SoC elaborates in about two seconds with one upstream source patch of one line, and
+  `make elaborate` reproduces it. The eFPGA is removed by name collision rather than by
+  patching upstream, its APB slot at `0x1A30_0000` staying decoded and reading zeros. The
+  definitive missing-module list is ten modules: six clock cells across three naming families
+  (70 instances, now ticket 16), the two L2 memories, the boot ROM, and `apb_pll`, which
+  turns out to be the entire clock generator rather than a cell inside one. **No pad
+  wrappers** appear at all, so pads are purely a `chip_top` concern. Ticket 09's exclusion
+  list proved unnecessary and its `DISABLE_EFPGA` define does not exist upstream.
 - [07 Is gf180mcu_ocd_ip_sram a denser alternative?](issues/07-ocd-sram-characterisation.md)
   — Yes, roughly 2.6x. The OCD `sram1024x8m8wm1` measures 0.155 mm²/KiB against the foundry
   macro's 0.409, which makes 32 KiB of L2 reachable at 39% of core area where it previously
@@ -109,9 +124,13 @@ signed ECA covering the commit author.
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
 trigger resolves.
 
-- **Technology-cell RTL.** One implementation each for the SRAM wrapper, clock gate, boot
-  ROM, clock source and pad wrappers. `rtl/gf180mcu/README.md` has a first guess at the list,
-  but the definitive set is whatever elaboration reports missing. Graduates from ticket 03.
+- **The remaining technology cells.** Ticket 03 replaced the guess with a measured list and
+  ticket 16 took the clock cells out of it. Four files are left, and each is waiting on a
+  decision rather than on sharpness: `gf180_interleaved_ram.sv` and `gf180_private_ram.sv`
+  from ticket 11, `gf180_bootrom.sv` from ticket 04, and `gf180_clk_gen.sv` from ticket 05,
+  which provides `apb_pll` in its entirety rather than a PLL cell inside it. Pad wrappers
+  have left this patch: nothing in the SoC instantiates a pad cell, so `gf180_pads.sv` is
+  `chip_top` work and graduates with the floorplan.
 - **Software and the boot image.** Whether `sw/` exists at all, what it contains, and how it
   is built and loaded. Graduates from ticket 04.
 - **Floorplan, PDN and macro placement.** Sixteen to thirty-two SRAM macros will not place

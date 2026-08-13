@@ -26,7 +26,11 @@ Decide:
   which is really a question about whether upstream wants one open-PDK target or a family.
 - The `soc_domain.sv:101` `L2_BANK_SIZE` fix and the `perdef.json` regeneration, which are
   bug fixes and target-independent improvements. These could go upstream much earlier than
-  the rest, and arguably should.
+  the rest, and arguably should. Ticket 03 added a third to that list, already committed
+  locally as submodule `a6b6fdc`: `i2c_peripheral_interface.v:51` guards an async-reset block
+  with `if (rst == 1)`, which no strict front end can match back to the event list, so the
+  file does not elaborate outside Synopsys. One line, target-independent, and it blocks
+  anyone else trying to read the SoC with an open front end.
 - Process: the Eclipse Contributor Agreement, fork, branch, pull request, and whoever at
   OpenHW to talk to before opening it.
 

@@ -45,7 +45,7 @@ define require
 	}
 endef
 
-.PHONY: help shell pdk harden sim sim-gl precheck precheck-image clean
+.PHONY: help shell pdk elaborate harden sim sim-gl precheck precheck-image clean
 
 help: ## Show this help
 	@echo "core-v-mcu-wafer-space"
@@ -65,6 +65,9 @@ pdk: ## Fetch the pinned GF180MCU PDK into ./pdk
 	  --pdk-family $(PDK_FAMILY) \
 	  $(PDK_COMMIT)
 	@echo "PDK ready at $(PDK_ROOT)"
+
+elaborate: ## Elaborate the SoC RTL and list the modules still missing
+	@$(RUN) sh /foss/designs/flow/synth/elaborate.sh
 
 harden: ## Run LibreLane RTL-to-GDS
 	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
@@ -92,4 +95,4 @@ precheck: ## Check the final GDS against wafer.space submission rules
 	  --top $(TOP) --slot $(SLOT) /work/flow/final/gds/$(TOP).gds
 
 clean: ## Remove flow outputs (keeps the PDK)
-	@rm -rf $(ROOT)/flow/runs $(ROOT)/flow/final $(ROOT)/sim/sim_build
+	@rm -rf $(ROOT)/flow/runs $(ROOT)/flow/final $(ROOT)/flow/build $(ROOT)/sim/sim_build
