@@ -27,8 +27,17 @@ Decide:
 - The `soc_domain.sv:101` `L2_BANK_SIZE` fix and the `perdef.json` regeneration, which are
   bug fixes and target-independent improvements. These could go upstream much earlier than
   the rest, and arguably should.
-- Process: the Eclipse Contributor Agreement (see ticket 02), fork, branch, pull request, and
-  whoever at OpenHW to talk to before opening it.
+- Process: the Eclipse Contributor Agreement, fork, branch, pull request, and whoever at
+  OpenHW to talk to before opening it.
+
+**Two preconditions from ticket 02, neither of which exists.** That ticket resolved to *no
+fork* and *no ECA*: nothing from this effort is published until the dev decides to publish it,
+so this ticket cannot open a PR from anywhere. When that changes, both are cheap but not
+instant. The fork can go under `yusefkarim` or `riscv-ottawa` (the dev is an admin of the
+latter); the ECA is free but slow, and it validates the **commit author email**, so
+`yusefkarim@riseup.net` has to be registered on the Eclipse account or this port's history
+needs rewriting first. PR branches follow upstream's `<org>_<userid>_yyyymmdd` convention,
+which is what that convention is for; the port itself sits on plain local `master`.
 
 ## Definition of done
 

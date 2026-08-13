@@ -43,6 +43,9 @@ Standing preferences for this effort:
   to a real populated directory rather than failing. Anything that takes a variant name
   should assert it is `gf180mcuD`.
 - Sign-off means a clean precheck. LibreLane finishing is not sign-off.
+- **Nothing is published.** Established by ticket 02: no commit, branch, fork or repo from
+  this effort is pushed to a public remote. The dev publishes when they choose. Work is kept
+  by committing locally, in this repo and on the submodule's local `master`.
 
 Dated signal: **re-check after 13 September 2026** for ORConf 2026 in Ghent, where the
 `gf180mcu_ocd_ip_sram` silicon characterisation is presented (Edwards, "Finally Testing
@@ -57,7 +60,9 @@ that is what wafer.space fabricates. The FPU and Xpulp extensions are already di
 upstream's `fc_subsystem.sv` and stay that way.
 
 Upstreaming the portable technology cells to OpenHW is in scope but sits past the
-destination, so ticket 13 is held until the GDS is signed off. December comes first.
+destination, so ticket 13 is held until the GDS is signed off. December comes first. Ticket 02
+added two hard preconditions to it that do not exist yet: a fork to open the PR from, and a
+signed ECA covering the commit author.
 
 ## Decisions so far
 
@@ -72,6 +77,14 @@ destination, so ticket 13 is held until the GDS is signed off. December comes fi
   5 V only so 3.3 V is a flow-config override. And `gf180mcu_ocd_ip_sram` is **not in the
   pinned PDK at all**, only referenced by it, so acting on ticket 07 costs a from-source
   `ciel build`. That opened ticket 15.
+- [02 Fork upstream and re-point the submodule](issues/02-fork-and-repoint-submodule.md)
+  — **No fork.** Port commits live on the submodule's local `master`, unpushed, and
+  `.gitmodules` stays pointed at upstream unchanged. The DoD's "a fresh recursive clone
+  builds" is knowingly **not** met: the parent records a submodule commit that exists on one
+  disk, and the parent has no remote either. `submodule.core-v-mcu.update = merge` is set
+  locally so a stray `git submodule update` cannot detach HEAD and orphan the port commits.
+  The ECA is deferred until the work goes public; when it does, the commit author email
+  `yusefkarim@riseup.net` must be on the Eclipse account or ticket 13's PRs bounce.
 - [07 Is gf180mcu_ocd_ip_sram a denser alternative?](issues/07-ocd-sram-characterisation.md)
   — Yes, roughly 2.6x. The OCD `sram1024x8m8wm1` measures 0.155 mm²/KiB against the foundry
   macro's 0.409, which makes 32 KiB of L2 reachable at 39% of core area where it previously
@@ -129,3 +142,6 @@ Ruled beyond the destination. These do not graduate; they would be a fresh effor
   is removed rather than ported.
 - FPU and Xpulp support, already disabled upstream.
 - Anything larger than one 1x1 slot: multi-die, reticle stitching, a second shuttle run.
+- Publishing and hosting: a public fork, a remote for this repo, CI that clones it, and the
+  ECA that goes with any of that. Ruled out by ticket 02. It follows that a fresh recursive
+  clone cannot reproduce this checkout, and that no automation runs against the design.

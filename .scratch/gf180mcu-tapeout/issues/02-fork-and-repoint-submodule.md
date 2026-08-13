@@ -1,7 +1,7 @@
 # Fork upstream and re-point the submodule
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: none
 
 ## Question
@@ -36,4 +36,42 @@ upstream RTL will reference it.
 
 ## Answer
 
-<!-- filled on resolution -->
+**No fork, and none for the foreseeable future.** The port's commits live on the submodule's
+local `master`, unpushed. This is a deliberate call by the dev driving the map: nothing from
+this effort goes to a public remote until they publish it themselves. The question the ticket
+asked ("where does the fork live") is answered by removing the fork, not by siting it.
+
+What that means concretely:
+
+- `.gitmodules` is **unchanged** and stays pointed at `https://github.com/openhwgroup/core-v-mcu.git`.
+  There is nothing to re-point at. Upstream's default branch is `master`.
+- The submodule checkout is on an **attached** `master` at `4608714d`, clean, tracking
+  `origin/master` where `origin` is upstream over SSH. Commits made there stick. Pushing is
+  a non-event since we have no write access to `openhwgroup`, so the tracking branch is a
+  convenience for rebasing onto upstream, not a hazard.
+- Guard applied: `submodule.core-v-mcu.update = merge` in the parent's `.git/config` (local
+  config, not `.gitmodules`). Without it a plain `git submodule update` detaches HEAD and
+  orphans every port commit on `master`, which is the one way this arrangement loses work.
+  Nothing in `Makefile` or `run.sh` runs `git submodule update` today, so this is a guard
+  against a hand-typed command, not against the build.
+
+**The definition of done is deliberately not met, and that is the point.** The DoD asked that
+`git clone --recurse-submodules` into a fresh directory reproduce a working checkout. It
+cannot: the parent records a submodule commit that exists on one disk and nowhere else, and
+the parent repo itself has **no remote at all**, so there is nothing to clone from either.
+Reconstitution and CI both wait on a publishing decision that is out of scope for this map.
+The residual risk is disk loss, accepted knowingly.
+
+Secondary question, the Eclipse Contributor Agreement: **deferred, not declined.** It is not
+needed until the work goes public. Noted for whenever that happens: the ECA bot validates the
+**commit author email**, and commits here are authored as `yusefkarim@riseup.net`, so that
+address has to be registered on the Eclipse account or the history needs rewriting before any
+PR to OpenHW will pass. Ticket 13 now depends on a fork and an ECA that do not exist.
+
+Facts gathered along the way, since a future publishing decision will want them: no fork of
+`core-v-mcu` exists under `yusefkarim` or `riscv-ottawa` today; the dev is an **admin** of the
+`riscv-ottawa` org, so either siting is available on demand; upstream is public with 78 forks
+and an "Other" license. OpenHW's `CONTRIBUTING.md` mandates a fork as step one, and the
+`GitCheats.md` it points at asks for `<org>_<userid>_yyyymmdd` or `<org>_<userid>_issue_<num>`
+branch names, which is a *PR* branch convention and would apply to the narrow branches ticket
+13 cuts, not to a long-lived port branch.
