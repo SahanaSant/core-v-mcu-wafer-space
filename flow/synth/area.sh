@@ -53,9 +53,18 @@ LIB=$LIBDIR/${SCL}__${LIB_CORNER}.lib
 
 # `dfflibmap` maps flip-flops only. Upstream's apb_soc_ctrl infers four latches,
 # and without this they survive as behavioural `always` blocks that OpenSTA
-# cannot read. The PDK ships the map; LibreLane uses the same file.
+# cannot read. The PDK ships the map for gf180mcu_fd_sc_mcu7t5v0 and LibreLane
+# uses the same file, but not every library ships one: gf180mcu_as_sc_mcu7t3v3
+# has latch cells and no map. Fall back to a map kept next to this script,
+# named for the library, so a library can be measured without patching the PDK.
 LATCH_MAP=$PDK_ROOT/$PDK/libs.tech/librelane/$SCL/latch_map.v
-[ -r "$LATCH_MAP" ] || { echo "error: no latch map at $LATCH_MAP" >&2; exit 1; }
+if [ ! -r "$LATCH_MAP" ]; then
+    LATCH_MAP=$ROOT/flow/synth/latch_map/$SCL.v
+fi
+[ -r "$LATCH_MAP" ] || {
+    echo "error: no latch map for $SCL, in the PDK or at flow/synth/latch_map/$SCL.v" >&2
+    exit 1
+}
 
 # `report` re-runs only the summary, against logs a previous run left behind.
 # Synthesis is minutes; the summary is instant, and it gets iterated on.

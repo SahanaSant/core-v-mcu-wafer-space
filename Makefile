@@ -16,6 +16,26 @@ PDK_COMMIT ?= f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7
 # which is this path bind-mounted by run.sh.
 PDK_ROOT   := $(ROOT)/pdk
 
+# The PDK is built from source, because the prebuilt one `ciel enable` fetches
+# carries only the five gf180mcu_fd_* libraries. Which libraries and which
+# variant are decided in flow/pdk/build.sh, where the configure flags are.
+# One variant takes about ten minutes at -j1. Higher is untested: the only
+# build that has been proven here is serial, and open_pdks stages some views
+# through shared paths, so raising this needs checking rather than assuming.
+PDK_JOBS ?= 1
+
+# open_pdks deliberately `unexport PDK_ROOT` while building, so that a build
+# cannot pick up an already-installed PDK. The toolchain image ships a
+# /headless/.magicrc that dereferences $env(PDK_ROOT) with no catch around it,
+# so every magic call then fails to parse its startup file, loses the
+# technology and writes cells named "(UNNAMED)", which kills the build. Point
+# HOME at an empty directory so that startup file is not found: the technology
+# is supposed to come from the .magicrc open_pdks symlinks next to each library
+# as it builds it. Setting PDK_ROOT instead would silence the error by sourcing
+# the *previously installed* PDK's tech file, which is the contamination this
+# build exists to avoid.
+PDK_BUILD_HOME := $(PDK_ROOT)/.build-home
+
 # --- Design configuration ---------------------------------------------------
 SLOT ?= 1x1
 SCL  ?= gf180mcu_fd_sc_mcu7t5v0
@@ -58,12 +78,11 @@ help: ## Show this help
 shell: ## Open a shell in the toolchain container
 	@$(RUN)
 
-pdk: ## Fetch the pinned GF180MCU PDK into ./pdk
-	@mkdir -p $(PDK_ROOT)
-	@$(RUN) ciel enable \
-	  --pdk-root /foss/designs/pdk \
-	  --pdk-family $(PDK_FAMILY) \
-	  $(PDK_COMMIT)
+pdk: ## Build the pinned GF180MCU PDK from source into ./pdk (about 15 min)
+	@mkdir -p $(PDK_ROOT) $(PDK_BUILD_HOME)
+	@$(RUN) env HOME=/foss/designs/pdk/.build-home \
+	  PDK_COMMIT=$(PDK_COMMIT) PDK_JOBS=$(PDK_JOBS) \
+	  sh /foss/designs/flow/pdk/build.sh
 	@echo "PDK ready at $(PDK_ROOT)"
 
 elaborate: ## Elaborate the SoC RTL and list the modules still missing

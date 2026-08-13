@@ -25,7 +25,13 @@ CORE_AREA_UM2 = 12.92e6
 # The wafer.space template default that the placed-area arithmetic hangs off.
 TARGET_DENSITY = 0.35
 # Gate equivalents are quoted against the smallest 2-input NAND in the library.
-GE_CELL = "nand2_1"
+# Which cell that is depends on the library: gf180mcu_fd_sc_mcu7t5v0 has
+# nand2_1, gf180mcu_as_sc_mcu7t3v3 has no _1 drive of anything and starts at
+# nand2_2. So the reference is whichever nand2_* is smallest rather than a
+# fixed name, and the report names the one it used. kGE is only comparable
+# between libraries that resolve to the same reference cell; across libraries,
+# compare the um2.
+GE_CELL_PREFIX = "nand2_"
 # mm2 per KiB for the two macros ticket 11 is choosing between.
 SRAM_DENSITY = (
     ("gf180mcu_fd_ip_sram, foundry", 0.409),
@@ -34,21 +40,25 @@ SRAM_DENSITY = (
 
 
 def liberty_ge_area(path, scl):
-    """Area of the gate-equivalent reference cell, straight from the liberty."""
-    want = f"{scl}__{GE_CELL}"
+    """Smallest nand2 in the library, as (bare cell name, area), from the liberty."""
+    prefix = f"{scl}__{GE_CELL_PREFIX}"
     cell_re = re.compile(r"^\s*cell\s*\(\s*([A-Za-z0-9_\\]+)\s*\)")
     area_re = re.compile(r"^\s*area\s*:\s*([0-9.eE+-]+)\s*;")
     cell = None
+    areas = {}
     with open(path) as fh:
         for line in fh:
             m = cell_re.match(line)
             if m:
                 cell = m.group(1)
-            elif cell == want:
+            elif cell and cell.startswith(prefix):
                 m = area_re.match(line)
                 if m:
-                    return float(m.group(1))
-    raise SystemExit(f"error: {want} not found in {path}")
+                    areas.setdefault(cell, float(m.group(1)))
+    if not areas:
+        raise SystemExit(f"error: no {prefix}* cell found in {path}")
+    name = min(areas, key=areas.get)
+    return name[len(f"{scl}__"):], areas[name]
 
 
 def read_totals(log, top_module):
@@ -155,7 +165,7 @@ def main():
     args = ap.parse_args()
 
     logs = Path(args.logs)
-    ge = liberty_ge_area(args.liberty, args.scl)
+    ge_cell, ge = liberty_ge_area(args.liberty, args.scl)
     flat = read_totals(logs / "synth-flat.log", args.top)
     hier = read_totals(logs / "synth-hier.log", args.top)
     modules = read_modules(logs / "synth-hier.log")
@@ -172,7 +182,7 @@ def main():
         "there are no pads, no floorplan and no PDN. This is the logic and nothing else."
     )
     w("")
-    w(f"Gate equivalent: `{GE_CELL}` = {ge:.3f} um2, read from the liberty.")
+    w(f"Gate equivalent: `{ge_cell}` = {ge:.3f} um2, read from the liberty.")
     w("")
 
     w("## Headline")

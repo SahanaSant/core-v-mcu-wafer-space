@@ -37,7 +37,16 @@ flattened total rather than describing what it expects to have saved.
 As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
 clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
 5.0 V as a second arm, because that margin is what the design gave up to reach the denser
-SRAM and it should stay visible.
+SRAM and it should stay visible. Note that arm is hardcoded to two corners, so `make sta` only
+works against a library carrying both; ticket 15 measured `gf180mcu_as_sc_mcu7t3v3` on area
+alone for that reason.
+
+`make pdk` builds the PDK from source as of ticket 15 and takes about ten minutes per attempt,
+plus two to clone. It is not reliable in one pass: magic segfaults intermittently on the
+efabless pad cell, so the build retries up to four times and a cold run can take half an hour.
+Budget an hour and keep it off the critical path of anything time-boxed. Both `make area` and
+`make sta` take an `SCL=` override, and `flow/synth/latch_map/` holds a map for any library the
+PDK does not ship one for.
 
 Standing preferences for this effort:
 
@@ -62,10 +71,10 @@ Standing preferences for this effort:
   thickness (roughly 0.99 µm against 1.19 µm) and therefore in DRC rules, so a cell verified
   under C's deck is not automatically clean under D's. This killed ticket 08 and it is the
   open question hanging over ticket 07's macros. Check the variant of any third-party IP
-  before spending time on it. Note also that `pdk/` carries `gf180mcuA` through `gf180mcuD`
-  as symlinks into a single ciel version, so a mistyped or copy-pasted variant name resolves
-  to a real populated directory rather than failing. Anything that takes a variant name
-  should assert it is `gf180mcuD`.
+  before spending time on it. As of ticket 15 the mistyped-variant hazard is **gone**: the PDK
+  is built for `gf180mcuD` alone, so `pdk/` holds one symlink and a wrong variant name fails
+  instead of resolving to a real populated directory. Keep asserting `gf180mcuD` anyway, the way
+  `area.sh`, `sta.sh` and `flow/pdk/build.sh` do, because the assertion is what keeps that true.
 - Sign-off means a clean precheck. LibreLane finishing is not sign-off.
 - **Nothing is published.** Established by ticket 02: no commit, branch, fork or repo from
   this effort is pushed to a public remote. The dev publishes when they choose. Work is kept
@@ -159,6 +168,24 @@ signed ECA covering the commit author.
   are 5 V capable but not 5 V tolerant, since every output PMOS has its bulk on DVDD. So 3.3 V
   single supply is the buildable baseline and a separated 5.0 V ring needs `gf180mcu_ocd_io`,
   which is unbuilt. That opened ticket 18 and widened ticket 15 from one library to three.
+- [15 Build the pinned PDK from source with the optional libraries enabled](issues/15-pdk-rebuild-optional-libraries.md)
+  — **All three built, variant-pure, but not with `ciel build`.** `make pdk` is now
+  `flow/pdk/build.sh` driving open_pdks directly, because the flag that matters
+  (`--with-gf180mcu-variants=D`) is one ciel hardcodes. Four defects sat in the way, each quiet
+  on its own: `-l` is a whitelist so the ticket's own command would have emitted a PDK with **no
+  foundry standard cells**; the image's `/headless/.magicrc` dereferences a `PDK_ROOT` that
+  open_pdks deliberately unexports, killing every magic call; magic 8.3.678 segfaults
+  **intermittently** on the efabless pad cell where the commit expects 8.3.674, so the build
+  retries and the successful one took three attempts; and `run.sh` does not forward
+  `PDK_COMMIT`. Building D alone also retires the map's mistyped-variant hazard, since A, B and
+  C no longer exist as symlinks. The foundry libraries reproduce the prebuilt distribution
+  file-for-file and `make area` still returns 118,998 cells and 3,416,649 um2. **The 3.3 V-native
+  library is dead on measurement**: `gf180mcu_as_sc_mcu7t3v3` is 5.8% *larger* (3,614,711 um2),
+  having no `_1` drive of anything, so do not switch. Ticket 11 gains four OCD SRAM sizes rather
+  than one, plus an equal-capacity rebuild of the foundry 512x8 to check the 2.6x claim against.
+  Ticket 18 gains its answer: `gf180mcu_ocd_io__vdd` bonds the core rail with DVDD and DVSS
+  explicitly unconnected, against a foundry `dvdd` pad with no VDD port at all, and the library
+  is characterised at 5.0 V as well as 3.3 V.
 - [09 What did lip6/core-v-180-mcu actually get working?](issues/09-lip6-prior-art.md)
   — Much less than advertised, and it corrects the research report: its CI has **zero
   recorded runs ever**, it builds only the bare CV32E40P with no memory or peripherals, and
@@ -197,7 +224,11 @@ trigger resolves.
   technology-cell work.
 - **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
   needs, which are discovered by running into false errors. Graduates from a first full
-  harden.
+  harden. Ticket 15 added one known input: `gf180mcu_ocd_io`'s LibreLane config sets
+  `PAD_CDLS ""` where `gf180mcu_fd_io` inherits real CDL, so if ticket 18 picks the OCD pads
+  the ring has no CDL netlist for LVS as shipped. The SPICE is a proper hierarchical netlist
+  rather than a stub, so the data exists and the config is what needs pointing at it. How much
+  work that is cannot be judged before there is a pad ring to run LVS on.
 - **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
   exactly once. Late, and mechanical once the floorplan is fixed.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
