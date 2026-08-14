@@ -1,7 +1,7 @@
 # Cut the SoC interconnect down to what this chip needs
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 10, 12
 
 ## Question
@@ -58,4 +58,42 @@ may simply move somewhere else in the same crossbar.
 
 ## Answer
 
-<!-- filled on resolution -->
+**No RTL change. Closed with the finding recorded, not one of the four candidates executed.**
+
+The two problems this ticket was opened to solve are both gone. Ticket 22 (resolved after this
+ticket was filed) found the AXI crossbar's AW spill register, the path this ticket's own
+"timing problem" framing rests on, was never the deepest path in the design — it won a
+pre-layout slack race at 35 stages, 31.2 ns, 62% of budget, while the real 89-stage, 62.3 ns
+critical path lives inside the CV32E40P decoder, upstream CPU IP untouched by anything in the
+interconnect. And ticket 12's peripheral cuts, also after this ticket was filed, dropped core
+occupancy from the 97% this ticket was framed against to 76.4%, 3.04 mm² free. Neither the
+timing case nor the area-crisis case for trimming the interconnect survives the map's own later
+tickets.
+
+Read against the actual measured state, the four candidates:
+
+- **The four eFPGA master ports.** Ticket 10 already answered this one for the flow that's
+  actually run: *"the eFPGA tie-off does fold away, but only when the flow flattens, which is
+  now a flow requirement rather than a free win."* Flattening became a hard flow requirement as
+  of that ticket, so every flattened total this map has quoted since (82,209 cells / 2,281,302
+  um² and on) already has this structure constant-folded out for free. Parameterising
+  `N_EFPGA_TCDM_PORTS` to 0 to make that explicit would touch four upstream files
+  (`efpga_subsystem.sv`, `soc_peripherals.sv`, `soc_domain.sv`, `soc_interconnect_wrap.sv`,
+  `NR_TCDM_MASTER_PORTS` 9→5) for a `make area` delta expected to be zero. The remaining value
+  is structural honesty for an eventual upstream PR, not anything this shuttle's destination
+  needs measured. Filed against ticket 13 instead, which is explicitly held until GDS sign-off.
+- **The AXI ID width.** Not investigated further: it only mattered as a lever on the crossbar's
+  contribution to the critical path, and the crossbar isn't on the critical path.
+- **The AXI path at all.** Confirmed real on inspection — every one of the 9 TCDM master ports
+  (fc_data, fc_instr, udma_tx, udma_rx, debug, 4×eFPGA) gets its own full TCDM→AXI bridge and
+  its own slave port on `i_axi_xbar` in `soc_interconnect.sv`, though most of those masters
+  plausibly never target the peripheral bus. But cutting it is restructuring which masters get
+  an AXI path at all, not a parameter, and with 3.04 mm² of headroom and the crossbar off the
+  critical path there is no pressure left to justify that risk. Left as a known lever, not a
+  ticket: revisit only if ticket 21's floorplan finds routing congestion the interconnect's
+  footprint is contributing to.
+- **The interleaved crossbar.** Same reasoning: real structure, no current pressure to remove
+  it, not pursued.
+
+No files changed; `make area` and `make sta` were not re-run, since the DoD's premise (recover
+area, fix the critical path) no longer holds for any of the four candidates.

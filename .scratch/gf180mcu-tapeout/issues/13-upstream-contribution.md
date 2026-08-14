@@ -30,7 +30,12 @@ Decide:
   locally as submodule `a6b6fdc`: `i2c_peripheral_interface.v:51` guards an async-reset block
   with `if (rst == 1)`, which no strict front end can match back to the event list, so the
   file does not elaborate outside Synopsys. One line, target-independent, and it blocks
-  anyone else trying to read the SoC with an open front end.
+  anyone else trying to read the SoC with an open front end. Ticket 17 added a fourth:
+  parameterising `N_EFPGA_TCDM_PORTS` to 0 (`efpga_subsystem.sv`, `soc_peripherals.sv`,
+  `soc_domain.sv`, `soc_interconnect_wrap.sv`, `NR_TCDM_MASTER_PORTS` 9→5) instead of relying on
+  flatten-time constant folding to remove the four dead eFPGA master ports. `make area`'s
+  flattened total is expected to show no delta, since ticket 10 found the flow already folds
+  this away for free; the only payoff is structural honesty for the PR.
 - Process: the Eclipse Contributor Agreement, fork, branch, pull request, and whoever at
   OpenHW to talk to before opening it.
 

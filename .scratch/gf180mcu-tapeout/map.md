@@ -354,6 +354,19 @@ signed ECA covering the commit author.
   an external supervisor is assumed). Writing `gf180_clk_gen.sv` and the reset wiring is new
   work, not a further decision, so it's spun off as ticket 24, the same shape as ticket 04
   spinning off ticket 23.
+- [17 Cut the SoC interconnect down to what this chip needs](issues/17-interconnect-scope.md)
+  — **Closed with no RTL change: the two problems it was opened to solve are both gone.**
+  Ticket 22 found the crossbar's AW spill register, this ticket's own cited "timing problem,"
+  was never the deepest path (35 stages, 62% of budget); the real 89-stage critical path is in
+  the CV32E40P decoder, untouched by anything here. Ticket 12 dropped occupancy from the 97%
+  this ticket was framed against to 76.4%, 3.04 mm² free, so the area-crisis case is gone too.
+  Of the four candidates: the eFPGA master ports already fold away for free under the
+  flattening ticket 10 made mandatory, so parameterising them to 0 buys structural honesty, not
+  measured area, and is filed against ticket 13 instead. The AXI ID width only mattered as a
+  crossbar-critical-path lever that no longer exists. The AXI path and the interleaved
+  crossbar are both real, confirmed on inspection, but cutting either is restructuring rather
+  than a parameter, and nothing currently justifies that risk — left as a known lever for
+  ticket 21 if floorplan routing congestion ever calls for it, not a ticket.
 
 ## Not yet specified
 
