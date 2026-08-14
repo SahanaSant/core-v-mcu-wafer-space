@@ -16,11 +16,19 @@ output. That leaves `N_APBIO` overcommitted: GPIO(32) plus PWM(16) plus I2CS(3) 
 functions competing for 40 pads.
 
 So the real question is which functions lose their multiplexer entries. That is a product
-decision, not a mechanical one, and it interacts with two other tickets: ticket 12 may remove
-peripherals entirely, which frees their pads, and ticket 04 is now resolved — net **+3** pads
-(4 new QSPI pins for SPI flash boot, 1 freed by dropping `bootsel_i`), well inside the 8-pad
-slack this plan already has. Resolve after ticket 12 if the ordering allows, or resolve it
-provisionally and revisit.
+decision, not a mechanical one, and it interacts with two other tickets: ticket 04 is resolved —
+net **+3** pads (4 new QSPI pins for SPI flash boot, 1 freed by dropping `bootsel_i`), well
+inside the 8-pad slack this plan already has. Ticket 12 is also resolved, and most of its
+peripheral cuts (`apb_i2cs`, uDMA filter, uDMA camera) didn't need `N_APBIO`/pad-frame surgery
+to land, since they either had zero `perio` footprint or tied off in place — **except two
+decided-but-unimplemented inputs handed to this ticket specifically**: `N_GPIO` 32→16 (kept for
+a game-console d-pad/buttons, not upstream's full GPIO count) and `N_I2CM` 2→1 (the second uDMA
+I2C master cut). Both stalled on ticket 12's own attempt to implement them, because doing so
+shifts `apbio`/`perio` bit positions that the checked-in (Nexys-board) `pad_control.sv` hardcodes
+as literal indices — exactly the kind of regeneration this ticket exists to do, now against a
+real GF180 `perdef.json` instead. With those two folded in, `N_APBIO` becomes GPIO(16) +
+PWM(16) + I2CS(0) = **32**, comfortably inside 40 rather than 11 over it, so this ticket may no
+longer need to cut anything itself, only assign.
 
 `pad_control.sv` and `safe_domain.sv` are generated files. The answer has to be expressed as
 a modified `perdef.json` with the multiplexer regenerated through upstream's

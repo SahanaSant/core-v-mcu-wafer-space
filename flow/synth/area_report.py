@@ -320,7 +320,6 @@ def main():
             ("udma_subsystem", f"{P}.i_udma", 3),
             ("soc_event_generator", f"{P}.u_evnt_gen", 3),
             ("apb_adv_timer", f"{P}.i_apb_adv_timer", 3),
-            ("apb_i2cs", f"{P}.i_apb_i2cs", 3),
             ("apb_soc_ctrl", f"{P}.i_apb_soc_ctrl", 3),
             ("apb_gpiov2", f"{P}.i_apb_gpio", 3),
             ("apb_timer_unit", f"{P}.i_apb_timer_unit", 3),
@@ -337,7 +336,6 @@ def main():
 
         for title, path in (
             ("uDMA, per peripheral", f"{P}.i_udma"),
-            ("apb_i2cs", f"{P}.i_apb_i2cs"),
             ("soc_interconnect_wrap", f"{S}.i_soc_interconnect_wrap"),
         ):
             sub = t.area(path)

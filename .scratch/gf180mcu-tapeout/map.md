@@ -285,6 +285,21 @@ signed ECA covering the commit author.
   inside its 8-pad slack. ROM size is estimated, not yet measured, at **2 KiB**, for ticket 11's
   budget. `gf180_bootrom.sv` is a generated file, in `pad_control.sv`'s style; writing it,
   `sw/bootrom/`, and the generator script, and measuring the real area, is now ticket 23.
+- [12 Which peripherals survive?](issues/12-peripheral-scope.md)
+  — **Cut `apb_i2cs`, the uDMA filter and the uDMA camera; kept everything else, grilled
+  against a game-console target.** PWM survives as the audio path (this config has no I2S at
+  all), SDIO and a second SPI master survive for storage and sensors, GPIO is decided at 16 for
+  a controller layout rather than upstream's 32. **Measured, not estimated**: flattened area
+  fell from ticket 19's 114,244 cells / 3,349,208 um2 to **89,056 cells / 2,481,680 um2**
+  (−25.9%), and core occupancy at 35% density fell from 95.6% to **76.4%**, 3.04 mm2 free
+  against 0.57 mm2 — the biggest single move on the schedule-viability question of any ticket so
+  far. Found and patched one latent upstream bug along the way: `udma_rx_channels.sv` /
+  `udma_tx_channels.sv` part-select an "ext channel" slice that goes reversed-range-invalid
+  rather than empty when `N_FILTER=0`, never hit before because no upstream configuration sets
+  it to 0. Two decisions came out **unimplemented**: cutting the second uDMA I2C master
+  (`N_I2CM` 2→1) and shrinking GPIO (`N_GPIO` 32→16) both turned out to require regenerating
+  `pad_control.sv`'s literal-indexed mux table against a real `perdef.json`, which is ticket
+  06's job, not this one's — handed over as decided inputs instead of implemented here.
 
 ## Not yet specified
 
@@ -344,18 +359,15 @@ trigger resolves.
 - **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
   exactly once. Late, and mechanical once the floorplan is fixed.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
-  fallback is if it is not. Ticket 10 set the stakes: the logic wants 9.76 mm² of a 12.92 mm²
-  core at the template's 35% density, and that density is the optimistic end of what Run 1
-  achieved. At 8,000 cells/mm² instead of the measured 12,190 the logic alone wants 14.9 mm² and
-  there is no chip. Ticket 11 closed the memory half of it and left the arithmetic exact rather
-  than open: logic plus a 2.79 mm² SRAM array is **97% of core**, and 89% once ticket 12 cuts
-  `apb_i2cs`. So the remaining question is no longer how much has to be cut, it is whether 89% at
-  35% density actually places, which is ticket 21's to answer. Ticket 19 built the configuration
-  and re-measured: occupancy is **95.6%**, not 97%, because ticket 11's parameter set took 1.7%
-  off the logic, and 89% after ticket 12's cut. It also added a **second** candidate for the
-  thing that takes the December date away, alongside the floorplan: ticket 22's finding that the
-  design is roughly 70 ns deep at 3.3 V against a 50 ns budget, which no amount of floorplanning
-  fixes.
+  fallback is if it is not. Ticket 10 set the stakes at 97% occupancy; ticket 19's parameter set
+  brought that to 95.6%. **Ticket 12 changed the picture more than either did**: cutting
+  `apb_i2cs`, the uDMA filter and camera (measured, not estimated) dropped occupancy to
+  **76.4%**, 3.04 mm² free against 0.57 mm² before. The chip no longer looks area-critical, and
+  the remaining question is no longer "does it fit" so much as whether it places cleanly at 35%
+  density, which is still ticket 21's to answer, now with real margin behind it. What ticket 12
+  did *not* touch is ticket 22's finding that the design is roughly 70 ns deep at 3.3 V against a
+  50 ns budget — that risk is untouched by area headroom and still the more likely thing to take
+  the December date away.
 
 ## Out of scope
 
