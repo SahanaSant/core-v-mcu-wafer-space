@@ -43,7 +43,12 @@ the 300 worst-slack candidates for whichever is actually deepest and reports its
 unstable winner is visible rather than hidden. Re-measured on the current netlist: **89
 stages, 62.3 ns, 125% of the 50 ns / 20 MHz budget at 3.3 V**, and a tighter `abc -D` synthesis
 target changes nothing (byte-identical netlist), so this is not slack left on the table by
-synthesis. Quote this number; it is not provisional the way the old one was.
+synthesis. Quote this number; it is not provisional the way the old one was. **Re-measured again
+after ticket 23 added the boot ROM's real RTL: 83 stages, a 62.2 ns floor, 124% of budget** —
+the stage count moved (exactly the instability ticket 22 documented), the ns floor barely did
+(62.3 to 62.2), and the boot ROM is nowhere near the critical path either way. Whichever ticket
+last touched RTL owns the current number; check `flow/build/area/sta-*.log`'s date before
+quoting either figure as current.
 
 As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
 clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
@@ -417,6 +422,23 @@ signed ECA covering the commit author.
   routing half needs `chip_top.sv`, which doesn't exist, and tickets 23/24 resolved for the SoC
   to even elaborate, so that half is now ticket 25, blocked on both.
 
+- [23 Write the boot ROM: gf180_bootrom.sv, sw/bootrom, and the generator script](issues/23-write-boot-rom.md)
+  — **Built and measured: 828 bytes (207 words), well under the 2 KiB estimate.**
+  `sw/bootrom/gen_bootrom.py` converts the compiled image (built with the container's
+  `riscv64-unknown-elf-gcc`, not `riscv32-corev-elf-gcc` as assumed) into `gf180_bootrom.sv`, a
+  case statement keeping `a2_bootrom`'s name, ports and registered timing exactly, checked back
+  against the compiled image word-for-word under Icarus. `make elaborate` now reports one black
+  box, `apb_pll` (ticket 24). Re-measured: `make area` **83,101 cells, 2,299,430 um2** (+0.79%
+  over ticket 06, outside the 0.3% floor), occupancy 72.0% to **72.4%**; `make sta` **83 stages,
+  62.2 ns, 124%** of budget, essentially unchanged from ticket 22's 89/62.3/125% and confirming
+  the ROM is nowhere near the critical path. Five real bugs fixed along the way: a ticket-12
+  fallout `KeyError` in `util/ioscript.py`'s header generator, a `crc.h` type that was 32 bits on
+  the RV32 target but 64 on any host that builds it, a linker-script `stack` symbol that silently
+  overflowed the declared L2 region, a uDMA clock-divisor constant left over from a board this
+  design isn't, and `rx_saddr`/`tx_saddr` turning out to be narrow L2-local addresses rather than
+  full system addresses, fixed by landing every uDMA read at `L2_IMAGE_BASE` and nowhere else.
+  L2 layout settled: boot stack in the top 512 B, application gets the other 15,872.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
@@ -424,19 +446,20 @@ trigger resolves.
 
 - **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
   16 took the clock cells out of it, ticket 19 the two memories (landing as one
-  `gf180_l2_ram.sv` rather than the two files the table expected), and ticket 04 the boot ROM's
-  architecture. **Nothing here waits on a decision any more**: ticket 05 settled
-  `gf180_clk_gen.sv` (external bypass, inert `apb_pll` stub, 10 MHz, reinstated `rstgen` reset),
-  so both `gf180_clk_gen.sv` and `gf180_bootrom.sv` — the last two black boxes `make elaborate`
-  reports — are waiting only on being built and measured, ticket 24 and ticket 23 respectively.
-  Pad wrappers have left this patch: nothing in the SoC instantiates a pad cell, and now that
-  ticket 21 settled the floorplan, writing `chip_top.sv` and the pad ring is ticket 25's job,
-  blocked on 23 and 24.
+  `gf180_l2_ram.sv` rather than the two files the table expected), ticket 04 the boot ROM's
+  architecture, and ticket 23 the boot ROM itself (828 bytes, `gf180_bootrom.sv`). **One entry
+  left**: `gf180_clk_gen.sv`, the last black box `make elaborate` reports, waiting only on being
+  built and measured, ticket 24. Pad wrappers have left this patch: nothing in the SoC
+  instantiates a pad cell, and now that ticket 21 settled the floorplan, writing `chip_top.sv`
+  and the pad ring is ticket 25's job, blocked on 23 (now clear) and 24.
 - **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
   pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
   described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
   re-measured**: 89 stages, 62.3 ns, 125% of the 50 ns budget at 3.3 V, and a tighter `abc -D`
-  synthesis target changed nothing, so this is not slack synthesis left on the table. What
+  synthesis target changed nothing, so this is not slack synthesis left on the table. Ticket 23
+  re-measured again after adding the boot ROM's real RTL: 83 stages, 62.2 ns, 124% — the stage
+  count moved as ticket 22 said it would under unrelated changes, the ns floor essentially
+  didn't. What
   stays in the fog is what still cannot be asked before there is a floorplan: how much hold
   fixing the flow needs, what the clock tree costs once one exists for the 10,122-load clock
   net, and how much of the (already negative) 3.3 V margin wire RC eats on top of the 25%
@@ -487,9 +510,11 @@ trigger resolves.
   can answer, now with real margin behind it. What ticket 12
   did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
   budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
-  cheap fix (re-mapping at a tighter target changed nothing). That risk is untouched by area
+  cheap fix (re-mapping at a tighter target changed nothing). Ticket 23 re-measured after adding
+  the boot ROM's real RTL: 62.2 ns, 124%, essentially unchanged. That risk is untouched by area
   headroom and is now the more likely thing to take the December date away, pending ticket 05's
-  clock decision and whatever a first full harden's real CTS numbers say.
+  clock decision (already settled: 10 MHz external bypass) and whatever a first full harden's
+  real CTS numbers say.
 
 ## Out of scope
 

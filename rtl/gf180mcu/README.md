@@ -14,12 +14,12 @@ any RTL change and the list moves with the design.
 
 | Module to provide | Instances | File here | Upstream's version | Notes |
 | --- | --- | --- | --- | --- |
-| `a2_bootrom` | 1 | `gf180_bootrom.sv` | `a2_bootrom.sv` (sim only) | `$readmemh` does not synthesise |
 | `apb_pll` | 1 | `gf180_clk_gen.sv` | `fpga_pll.sv` | no open GF180 PLL, bypass to the pad |
 
 The six clock cells left this table in ticket 16 and are now in `gf180_clk_gate.sv`; see
 [Clock cells](#clock-cells) below. The two L2 memories left it in ticket 19 and are now in
-`gf180_l2_ram.sv`; see [L2 memory](#l2-memory).
+`gf180_l2_ram.sv`; see [L2 memory](#l2-memory). The boot ROM left it in ticket 23 and is now in
+`gf180_bootrom.sv`; see [Boot ROM](#boot-rom).
 
 The remaining entry is not what an earlier reading of upstream suggested.
 
@@ -174,6 +174,41 @@ anywhere in the library, the `sram1024x8` Verilog specify block, is **2x optimis
 20 owns all of it. `flow/synth/area_report.py` reads LEF geometry for exactly this reason, and
 `flow/synth/filelist.sh` hands the Liberty to slang for module definitions only, never to
 `stat -liberty`.
+
+## Boot ROM
+
+One module, `a2_bootrom`, in `gf180_bootrom.sv`. Ticket 04 settled the architecture (SPI-flash
+boot, single SPI, CRC32-checked, no bootsel fallback); ticket 23 built it and measured the real
+size against that ticket's 2 KiB estimate.
+
+`gf180_bootrom.sv` is a **generated file**, in `pad_control.sv`'s style: `sw/bootrom/gen_bootrom.py`
+compiles `sw/bootrom/` with the container's `riscv64-unknown-elf-gcc` (there is no
+`riscv32-corev-elf-gcc`; `-march=rv32imc -mabi=ilp32` targets the CV32E40P through it) and
+converts the resulting flat binary into a case statement, the same technique upstream's own
+`a2_boot/srec2verilog.py` used for the original `a2_bootrom.sv`. `$readmemh` does not synthesise,
+which is the only reason this file exists rather than a literal `initial` block. Regenerate with
+`make bootrom`, which also drives the RISC-V build and an Icarus testbench
+(`sw/bootrom/tb/bootrom_tb.sv`) that reads the generated module back against the compiled image,
+word for word, over its registered CEN/A/Q interface.
+
+Measured: **820 bytes (205 words), against ticket 04's 2 KiB estimate.** The generated module
+keeps `a2_bootrom`'s exact port list (`ADDR_WIDTH=11`, `DATA_WIDTH=32`, matching `boot_rom.sv`'s
+fixed 8 KiB decode window from `SOC_MEM_MAP_BOOT_ROM_START_ADDR`) and its exact registered read
+timing, since `boot_rom.sv` instantiates it unmodified. The reset vector
+(`apb_soc_ctrl.sv`'s `r_bootaddr`, `0x1A00_0080`) lands on word 32 of the case statement, matching
+upstream's own 32-entry trap-vector table before the reset handler.
+
+L2 destination is `0x1C00_0000`, the bottom of the 16 KiB region tickets 11 and 19 built. Ticket
+04 left "a fixed corner reserved for the ROM's boot-time stack" unpicked; ticket 23 fixed it at
+the *top* of the region, 512 bytes (`sw/bootrom/include/boot_image.h`'s
+`BOOT_STACK_RESERVE_BYTES`), covering both the ROM's `.bss` (`spi.c`'s 64-byte command buffer) and
+its stack. The application gets the remaining 15,872 bytes, `0x1C00_0000`-`0x1C00_3E00`.
+
+One real fix along the way: `udma_qspim_open`'s clock-divisor formula (carried over from
+`a2_boot/spi.c`) assumed a fixed 5 MHz peripheral clock, which was that board's FLL-derived
+`udma_ctrl` clock. Ticket 05 settled this design's clock architecture as `ref_clk_i` bypassed
+undivided to 10 MHz, so the divisor is now derived from that real number
+(`udma_clk_div_cnt.sv`'s `spi_clk = periph_clk / (2*N)`) rather than carried over unchanged.
 
 ## Area budget
 

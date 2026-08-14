@@ -22,19 +22,10 @@
 // binds both upstream names to four ganged `sram1024x8` macros, and the macro
 // itself arrives as a black box from its liberty rather than from here.
 //
-// The boot ROM. Upstream's simulation model initialises itself with $readmemh,
-// which does not synthesise; ticket 04 decides what replaces it.
-(* blackbox *)
-module a2_bootrom #(
-    parameter ADDR_WIDTH = 11,
-    parameter DATA_WIDTH = 32
-) (
-    input  logic                  CLK,
-    input  logic                  CEN,
-    input  logic [ADDR_WIDTH-1:0] A,
-    output logic [DATA_WIDTH-1:0] Q
-);
-endmodule
+// The boot ROM left this file in ticket 23:
+// `rtl/gf180mcu/gf180_bootrom.sv` (a generated file; see its header) replaces
+// upstream's $readmemh-initialised simulation model with a case statement
+// over the compiled sw/bootrom image.
 
 // --- Clock source ----------------------------------------------------------
 // The SoC's clock generator, behind an APB register file. Upstream's ASIC

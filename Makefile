@@ -67,7 +67,7 @@ define require
 	}
 endef
 
-.PHONY: help shell pdk elaborate area sta harden sim sim-gl precheck precheck-image clean
+.PHONY: help shell pdk elaborate area sta bootrom harden sim sim-gl precheck precheck-image clean
 
 help: ## Show this help
 	@echo "core-v-mcu-wafer-space"
@@ -95,6 +95,9 @@ area: ## Synthesise to standard cells and report the logic area
 
 sta: ## Report the critical path of the synthesised netlist (needs `make area`)
 	@$(RUN) sh /foss/designs/flow/synth/sta.sh
+
+bootrom: ## Build sw/bootrom, generate gf180_bootrom.sv, and simulate it against the image
+	@$(RUN) sh /foss/designs/flow/synth/bootrom.sh
 
 harden: ## Run LibreLane RTL-to-GDS
 	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
