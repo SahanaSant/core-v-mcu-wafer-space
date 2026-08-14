@@ -337,6 +337,24 @@ signed ECA covering the commit author.
   a slower clock (defensibly below 16 MHz at 3.3 V), unproven retiming, or pipelining the
   CV32E40P decoder path, which would be new microarchitecture off this map.
 
+- [05 Clock and reset architecture without a PLL](issues/05-clock-and-reset.md)
+  — **External `ref_clk_i` bypass, undivided, at 10 MHz; `apb_pll` becomes an inert stub;
+  `rstgen` reinstated for real async-assert/sync-deassert reset.** No PLL and no on-die
+  oscillator: a self-clocked demo was investigated and rejected for this shuttle, since
+  Mabrains' open ring-oscillator IP is fused into an unverified, possibly `gf180mcuC` analog
+  macro rather than a standalone one, unscoped re-verification work left in the fog rather than
+  pursued now. `gf180_clk_gen.sv` keeps `apb_pll`'s register offsets readable but functionally
+  dead, matching `fpga_pll.sv`'s own precedent, and drops the five dangling analog supply ports.
+  **10 MHz (100 ns)** is the target, roughly 60% margin over ticket 22's 62.3 ns idealized
+  floor and a standard oscillator frequency now that a human has to wire one to the board; since
+  the clock is external this is a synthesis/bring-up target, not a value burned into silicon.
+  Reset synchronization **does not exist in the RTL today** — `safe_domain.sv` is a bare wire —
+  so this reinstates upstream's own commented-out `rstgen` intent for real, one instance on the
+  main clock covering both domains, no on-die debounce or POR (the pad library has no POR cell;
+  an external supervisor is assumed). Writing `gf180_clk_gen.sv` and the reset wiring is new
+  work, not a further decision, so it's spun off as ticket 24, the same shape as ticket 04
+  spinning off ticket 23.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
@@ -345,12 +363,12 @@ trigger resolves.
 - **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
   16 took the clock cells out of it, ticket 19 the two memories (landing as one
   `gf180_l2_ram.sv` rather than the two files the table expected), and ticket 04 the boot ROM's
-  architecture. **One file is left waiting on a decision**: `gf180_clk_gen.sv` from ticket 05,
-  which provides `apb_pll` in its entirety rather than a PLL cell inside it. Writing
-  `gf180_bootrom.sv` itself no longer waits on a decision, only on being built and measured,
-  which is ticket 23. Both are still the last two black boxes `make elaborate` reports. Pad
-  wrappers have left this patch: nothing in the SoC instantiates a pad cell, so `gf180_pads.sv`
-  is `chip_top` work and graduates with the floorplan.
+  architecture. **Nothing here waits on a decision any more**: ticket 05 settled
+  `gf180_clk_gen.sv` (external bypass, inert `apb_pll` stub, 10 MHz, reinstated `rstgen` reset),
+  so both `gf180_clk_gen.sv` and `gf180_bootrom.sv` — the last two black boxes `make elaborate`
+  reports — are waiting only on being built and measured, ticket 24 and ticket 23 respectively.
+  Pad wrappers have left this patch: nothing in the SoC instantiates a pad cell, so
+  `gf180_pads.sv` is `chip_top` work and graduates with the floorplan.
 - **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
   pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
   described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
