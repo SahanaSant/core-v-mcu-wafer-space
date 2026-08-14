@@ -206,11 +206,11 @@ def main():
     w(f"# Logic area: `{args.top}` on `{args.scl}`")
     w("")
     w(
-        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. The boot "
-        "ROM and `apb_pll` are black boxes, the SRAM macros are real instances with no "
-        "area in this liberty, and there are no pads, no floorplan and no PDN. The cell "
-        "areas below are standard cells and nothing else; the macros are counted "
-        "separately, from LEF."
+        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. Every "
+        "technology cell is real as of ticket 24 (boot ROM, clock generator, clock cells, "
+        "memories); the SRAM macros are real instances with no area in this liberty, and "
+        "there are no pads, no floorplan and no PDN. The cell areas below are standard "
+        "cells and nothing else; the macros are counted separately, from LEF."
     )
     w("")
     w(f"Gate equivalent: `{ge_cell}` = {ge:.3f} um2, read from the liberty.")

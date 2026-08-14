@@ -6,11 +6,12 @@
 # Synthesise the CORE-V MCU SoC to GF180MCU standard cells and report its area.
 # Runs inside the toolchain container; invoke it as `make area`.
 #
-# This is a measurement, not an implementation. Memories and the unwritten
-# technology cells stay black boxes, there is no floorplan and there are no
-# pads, so what comes out is the logic area of the SoC and nothing else. The
-# point is to replace the 200-300 kGE guess in docs/porting-analysis.md with a
-# number, and to re-measure in one command every time the RTL moves.
+# This is a measurement, not an implementation. Every technology cell is real
+# as of ticket 24 (memories, clock cells, boot ROM, clock generator), but there
+# is still no floorplan and no pads, so what comes out is the logic area of the
+# SoC and nothing else. The point is to replace the 200-300 kGE guess in
+# docs/porting-analysis.md with a number, and to re-measure in one command
+# every time the RTL moves.
 #
 # Two passes, because they answer different questions:
 #
@@ -27,7 +28,7 @@ set -eu
 . "${ROOT:-/foss/designs}/flow/synth/filelist.sh"
 
 MODE=${MODE:-both}
-CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
+CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-100}
 
 # Sets PDK, SCL, LIB_CORNER, LIBDIR, LIB, SRAM_LIB and LIBS; asserts the variant.
 gf180_liberty

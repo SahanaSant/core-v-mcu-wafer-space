@@ -34,7 +34,7 @@ PDK=${PDK:-gf180mcuD}
 SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
 SRAM=${SRAM:-gf180mcu_ocd_ip_sram}
 SRAM_MACRO=${SRAM_MACRO:-gf180mcu_ocd_ip_sram__sram1024x8m8wm1}
-CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-50}
+CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-100}
 SIGNOFF_CORNER=${LIB_CORNER:-ss_125C_3v00}
 NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
 
@@ -90,9 +90,9 @@ for corner in ss_125C_3v00 ss_125C_4v50; do
         *) echo "note: $SRAM has no $corner corner, SRAM arcs are $(basename "$sram_lib" .lib | sed 's/.*__//')" ;;
     esac
 
-    # The SoC clock is generated inside apb_pll, which is still a black box, so
-    # there is no clock to find by tracing. Constrain the reference the ASIC
-    # build drives and let blackbox.lib's ideal arcs carry it through.
+    # apb_pll is real RTL as of ticket 24, a straight bypass from ref_clk_i, so
+    # ref_clk_i is not a stand-in for a hidden clock: it is the SoC clock.
+    # Constrain it directly rather than tracing through the register file.
     sta -exit >"$OUT/sta-$corner.log" 2>&1 <<EOF
 read_liberty $lib
 read_liberty $sram_lib

@@ -46,9 +46,16 @@ target changes nothing (byte-identical netlist), so this is not slack left on th
 synthesis. Quote this number; it is not provisional the way the old one was. **Re-measured again
 after ticket 23 added the boot ROM's real RTL: 83 stages, a 62.2 ns floor, 124% of budget** —
 the stage count moved (exactly the instability ticket 22 documented), the ns floor barely did
-(62.3 to 62.2), and the boot ROM is nowhere near the critical path either way. Whichever ticket
-last touched RTL owns the current number; check `flow/build/area/sta-*.log`'s date before
-quoting either figure as current.
+(62.3 to 62.2), and the boot ROM is nowhere near the critical path either way. **Ticket 24
+re-measured against ticket 05's real budget for the first time**: 100 ns / 10 MHz, not the 50
+ns / 20 MHz placeholder every figure above was measured against, since `gf180_clk_gen.sv` and
+the reset synchroniser closed the last open question the clock decision depended on. 86 stages,
+a 77.4 ns floor, **77% of the 100 ns budget at 3.3 V** (85 stages, 51.0 ns, 51% on the 5.0 V
+logic arm) — the design closes with real margin for the first time. Read that as the budget
+catching up to reality, not the logic getting faster: stage count and floor both moved again
+under this ticket's RTL churn (83 to 86 stages, 62.2 to 77.4 ns), the same ranked-#1 instability
+ticket 22 documented. Whichever ticket last touched RTL owns the current number; check
+`flow/build/area/sta-*.log`'s date before quoting any figure above as current.
 
 As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
 clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
@@ -439,19 +446,36 @@ signed ECA covering the commit author.
   full system addresses, fixed by landing every uDMA read at `L2_IMAGE_BASE` and nowhere else.
   L2 layout settled: boot stack in the top 512 B, application gets the other 15,872.
 
+- [24 Write gf180_clk_gen.sv and wire the reset synchronizer](issues/24-write-clock-gen-and-reset.md)
+  — **Built and measured: the design closes with real margin, and it is the budget that changed,
+  not the logic.** `gf180_clk_gen.sv` provides `apb_pll` for real: `soc_clk_o`/`periph_clk_o`/
+  `cluster_clk_o` bypass `ref_clk_i` straight through per ticket 05's answer, the eight FLL
+  registers stay readable/writable but inert (`LOCK` tied high so nothing polling it can hang),
+  the five analog PLL ports are gone, and `ref_clk_o`'s divide-by-40 keeps `clkdv`, copied
+  unmodified the way `fpga_pll.sv` and `apb_pll.sv` each carry their own copy. `safe_domain.sv`
+  gained a `ref_clk_i` port and a real `rstgen` instance (async assert, sync deassert),
+  replacing a bare `assign rst_no = rst_ni` that had stood unsynchronized since the file was
+  written; one instance covers both the main clock and the `/40` domain. `make elaborate` now
+  reports **zero** black boxes. `flow/synth/stubs.sv` and `flow/synth/blackbox.lib` lost their
+  last live entries (the latter's already-dead `a2_bootrom` entry, an oversight left over from
+  ticket 23, came out too). `CLOCK_PERIOD_NS` moved from 50 to 100 in `area.sh` and `sta.sh` —
+  and in `run.sh`, which was found to shadow both scripts' own defaults by forwarding
+  `CLOCK_PERIOD_NS=50` into the container regardless, silently defeating the point of editing
+  either script alone. Re-measured: `make area` **84,753 cells, 2,334,966 um2** (+1.55% over
+  ticket 23, outside the 0.3% floor — the register file and `rstgen` are real cells now, not a
+  zero-cost black box), occupancy 72.4% to **73.2%**. `make sta` at the new 100 ns budget: **86
+  stages, a 77.4 ns floor, 77% of budget at 3.3 V** (85 stages, 51.0 ns, 51% on the 5.0 V logic
+  arm) — the first measurement to close with margin instead of failing it, entirely because
+  ticket 05 moved the target from 20 MHz to 10 MHz, not because anything got faster: stage count
+  and floor both moved again under this ticket's RTL churn (83→86, 62.2→77.4 ns), consistent with
+  ticket 22's documented instability of the ranked-#1 path under unrelated changes elsewhere in
+  the design.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
 trigger resolves.
 
-- **The remaining technology cells.** Ticket 03 replaced the guess with a measured list, ticket
-  16 took the clock cells out of it, ticket 19 the two memories (landing as one
-  `gf180_l2_ram.sv` rather than the two files the table expected), ticket 04 the boot ROM's
-  architecture, and ticket 23 the boot ROM itself (828 bytes, `gf180_bootrom.sv`). **One entry
-  left**: `gf180_clk_gen.sv`, the last black box `make elaborate` reports, waiting only on being
-  built and measured, ticket 24. Pad wrappers have left this patch: nothing in the SoC
-  instantiates a pad cell, and now that ticket 21 settled the floorplan, writing `chip_top.sv`
-  and the pad ring is ticket 25's job, blocked on 23 (now clear) and 24.
 - **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
   pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
   described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
@@ -459,11 +483,17 @@ trigger resolves.
   synthesis target changed nothing, so this is not slack synthesis left on the table. Ticket 23
   re-measured again after adding the boot ROM's real RTL: 83 stages, 62.2 ns, 124% — the stage
   count moved as ticket 22 said it would under unrelated changes, the ns floor essentially
-  didn't. What
+  didn't. **Ticket 24 re-measured a third time, against the real 100 ns budget for the first
+  time**: 86 stages, 77.4 ns, **77%** — the design closes with margin now, because the budget
+  ticket 05 settled (10 MHz, not the 20 MHz every earlier figure here was measured against)
+  finally has RTL to be measured against, not because the logic got faster; stage count and
+  floor moved again under the same RTL-churn instability ticket 22 documented (83 to 86 stages,
+  62.2 to 77.4 ns). What
   stays in the fog is what still cannot be asked before there is a floorplan: how much hold
   fixing the flow needs, what the clock tree costs once one exists for the 10,122-load clock
-  net, and how much of the (already negative) 3.3 V margin wire RC eats on top of the 25%
-  shortfall ticket 22 measured. Graduates from the first full harden. Ticket 16 made one part
+  net, and how much of the now-positive (**77%** at 3.3 V, ticket 24) margin wire RC eats once
+  a real clock tree exists to measure against. Graduates from the first full harden. Ticket 16
+  made one part
   concrete: the clock net has **54 real clock gates in it** rather than transparent black
   boxes, so they are 54 points CTS has to balance to rather than an abstraction. Ticket 19 made
   a second: the SRAM arcs are now real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but
@@ -511,10 +541,14 @@ trigger resolves.
   did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
   budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
   cheap fix (re-mapping at a tighter target changed nothing). Ticket 23 re-measured after adding
-  the boot ROM's real RTL: 62.2 ns, 124%, essentially unchanged. That risk is untouched by area
-  headroom and is now the more likely thing to take the December date away, pending ticket 05's
-  clock decision (already settled: 10 MHz external bypass) and whatever a first full harden's
-  real CTS numbers say.
+  the boot ROM's real RTL: 62.2 ns, 124%, essentially unchanged. **Ticket 24 resolved the
+  mismatch that timing risk was actually sitting in**: the 50 ns figures above were all measured
+  against a clock target ticket 05 had already moved past (100 ns / 10 MHz, not 20 MHz), because
+  nothing existed to measure the real target against until `gf180_clk_gen.sv` did. Re-measured
+  against 100 ns: 77.4 ns, **77%** of budget at 3.3 V, with real margin for the first time. Read
+  that as the schedule question resolving, not as the logic having gotten faster — what remains
+  is whether that margin survives a real clock tree and wire RC, which only a first full harden
+  can answer, and whether the design places cleanly at 35% density, ticket 25's question.
 
 ## Out of scope
 

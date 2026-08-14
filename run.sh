@@ -50,5 +50,5 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e TOP="${TOP:-core_v_mcu}" \
     -e MODE="${MODE:-both}" \
     -e LIB_CORNER="${LIB_CORNER:-ss_125C_3v00}" \
-    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-50}" \
+    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-100}" \
     "$IMAGE" --skip "$@"

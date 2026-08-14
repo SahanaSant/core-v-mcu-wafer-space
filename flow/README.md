@@ -30,25 +30,29 @@ The template's defaults encode hard-won knowledge. Change them deliberately, not
   `tt_025C_3v30`, `ff_n40C_3v60` and `ss_125C_3v00`. The library does not change:
   `gf180mcu_fd_sc_mcu7t5v0` carries all 229 cells at every one of its fifteen corners, and
   cell geometry is identical across them, so the supply choice costs no area.
-- `CLOCK_PERIOD: 50` gives 20 MHz, revised from 40 by ticket 14. **`make sta`'s headline is
-  trustworthy again, but the number is bad news.** Ticket 19 found that a plain
-  `report_checks -group_path_count 1` reports the path with the worst raw arrival, which
-  pre-layout is set by unbuffered fanout rather than by depth, so it moves identity under
-  unrelated churn: the same netlist reported a 35-stage AXI crossbar path in one measurement
-  and a 90-stage CV32E40P path in the next. Ticket 22 fixed this: `sta.sh` now asks OpenSTA for
-  the 300 worst-slack candidates in one query (`-group_path_count 300
-  -unique_paths_to_endpoint -format json`) and `path_summary.py` reports whichever of them has
-  the most logic stages, with its rank among the 300 printed alongside so a candidate that only
-  barely made the window is visible as such rather than silently trusted. Re-measured this way,
-  **the design does not close 20 MHz at 3.3 V**: 89 stages, a 62.3 ns floor against the 50 ns
-  budget, 125%. The 5.0 V logic-only arm has real margin, 88 stages at 44.0 ns, 88% of budget.
-  Re-mapping at a 20 ns `abc -D` target instead of 50 ns changed nothing: byte-identical cell
-  area and an identical reported path, so this is not synthesis leaving margin on the table.
-  Ticket 05 owns the final clock number against this finding, and it is not a small gap: the
-  floor already assumes every stage gets its liberty-table delay with no wire RC, so real
-  silicon is not going to do better than 62.3 ns, only worse, until CTS and buffering exist to
-  measure against. The memory is not the limit either way: the OCD macro reports 13.46 to
-  15.87 ns at `ss_125C_3v00`, against a 50 ns budget.
+- `CLOCK_PERIOD: 100` gives 10 MHz, ticket 05's settled target (ticket 24 moved the flow's own
+  defaults there). Earlier in this map's history the setting was 50 ns / 20 MHz (revised from 40
+  by ticket 14), and `make sta`'s headline against that target was bad news: Ticket 19 found
+  that a plain `report_checks -group_path_count 1` reports the path with the worst raw arrival,
+  which pre-layout is set by unbuffered fanout rather than by depth, so it moves identity under
+  unrelated churn: the same netlist reported a 35-stage AXI crossbar path in one measurement and
+  a 90-stage CV32E40P path in the next. Ticket 22 fixed this: `sta.sh` now asks OpenSTA for the
+  300 worst-slack candidates in one query (`-group_path_count 300 -unique_paths_to_endpoint
+  -format json`) and `path_summary.py` reports whichever of them has the most logic stages, with
+  its rank among the 300 printed alongside so a candidate that only barely made the window is
+  visible as such rather than silently trusted. Against the old 50 ns budget the design never
+  closed 20 MHz at 3.3 V: 89 stages and a 62.3 ns floor at ticket 22 (125% of budget), 83 stages
+  and 62.2 ns at ticket 23 (124%), essentially unchanged by the boot ROM's real RTL landing.
+  **Ticket 24 re-measured against the real 100 ns budget for the first time** (`gf180_clk_gen.sv`
+  and the reset synchroniser were the last RTL the clock decision was waiting on): 86 stages, a
+  77.4 ns floor, **77% of the 100 ns budget at 3.3 V** — real margin, for the first time, because
+  the budget caught up to what ticket 05 had already settled, not because the logic got faster.
+  The 5.0 V logic-only arm is 85 stages, 51.0 ns, 51% of budget. The floor already assumes every
+  stage gets its liberty-table delay with no wire RC, so real silicon will not do better than
+  77.4 ns, only worse, until CTS and buffering exist to measure against; whether that margin
+  survives a real clock tree is still open, and graduates only from a first full harden. The
+  memory is not the limit either way: the OCD macro reports 13.46 to 15.87 ns at `ss_125C_3v00`,
+  against a 100 ns budget.
 - `PL_TARGET_DENSITY_PCT: 35`. Run 1 designs achieved 3k to 14k cells/mm², against a
   theoretical maximum several times higher. Plan against 8k to 12k.
 - Hold-slack margins are overfixed at 0.30 to 0.35 ns for a reason. Leave them alone.

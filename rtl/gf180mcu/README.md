@@ -14,30 +14,22 @@ any RTL change and the list moves with the design.
 
 | Module to provide | Instances | File here | Upstream's version | Notes |
 | --- | --- | --- | --- | --- |
-| `apb_pll` | 1 | `gf180_clk_gen.sv` | `fpga_pll.sv` | no open GF180 PLL, bypass to the pad |
+| *(none)* | | | | every module `make elaborate` once listed is now real |
 
 The six clock cells left this table in ticket 16 and are now in `gf180_clk_gate.sv`; see
 [Clock cells](#clock-cells) below. The two L2 memories left it in ticket 19 and are now in
 `gf180_l2_ram.sv`; see [L2 memory](#l2-memory). The boot ROM left it in ticket 23 and is now in
-`gf180_bootrom.sv`; see [Boot ROM](#boot-rom).
+`gf180_bootrom.sv`; see [Boot ROM](#boot-rom). `apb_pll` left it in ticket 24 and is now in
+`gf180_clk_gen.sv`; see [Clock generator](#clock-generator).
 
-The remaining entry is not what an earlier reading of upstream suggested.
-
-`apb_pll` is the whole clock generator, not a PLL cell inside one. Upstream's ASIC build
-takes `rtl/apb_fll_if/apb_pll.sv`, which wraps a `PLL18_TOP` hard macro, and its FPGA build
-replaces the entire module through `fpga_pll.sv`. GF180MCU follows the FPGA route, so
-`gf180_clk_gen.sv` provides `apb_pll` itself: the APB register file, the dividers and the
-clock source. Note its five analog supply ports (`AVDD`, `AVDD2`, `AVSS`, `VDDC`, `VSSC`).
-`soc_peripherals.sv` connects them to undeclared identifiers, so they are implicit wires
-going nowhere and no analog supply reaches the SoC boundary today.
-
-There are **no pad wrappers in this list**. `pad_functional_pd` and `pad_functional_pu` are
-defined in `tech_cells_generic` and in upstream's Xilinx directory but never instantiated:
-`core_v_mcu.sv` exposes `io_in_i` / `io_out_o` / `io_oe_o` as plain ports. Pads are entirely
-a `chip_top` concern, so `gf180_pads.sv` belongs to `rtl/chip/`, not here.
+There are **no pad wrappers in this list, and never were**. `pad_functional_pd` and
+`pad_functional_pu` are defined in `tech_cells_generic` and in upstream's Xilinx directory but
+never instantiated: `core_v_mcu.sv` exposes `io_in_i` / `io_out_o` / `io_oe_o` as plain ports.
+Pads are entirely a `chip_top` concern, so `gf180_pads.sv` belongs to `rtl/chip/`, not here.
 
 Until a cell is written, `flow/synth/stubs.sv` carries an empty black box for it so the
-hierarchy closes. Delete the stub as each real implementation lands.
+hierarchy closes. Delete the stub as each real implementation lands; as of ticket 24 the file
+carries none.
 
 ## Clock cells
 
@@ -209,6 +201,52 @@ One real fix along the way: `udma_qspim_open`'s clock-divisor formula (carried o
 `udma_ctrl` clock. Ticket 05 settled this design's clock architecture as `ref_clk_i` bypassed
 undivided to 10 MHz, so the divisor is now derived from that real number
 (`udma_clk_div_cnt.sv`'s `spi_clk = periph_clk / (2*N)`) rather than carried over unchanged.
+
+## Clock generator
+
+One module, `apb_pll`, in `gf180_clk_gen.sv`. Ticket 05 settled the architecture (external
+`ref_clk_i` bypass, undivided, no PLL, no on-die oscillator); ticket 24 built it, reinstated
+`safe_domain.sv`'s reset synchronization, and re-measured against the resulting 10 MHz target.
+
+`apb_pll` is the whole clock generator, not a PLL cell inside one. Upstream's ASIC build takes
+`rtl/apb_fll_if/apb_pll.sv`, which wraps a `PLL18_TOP` hard macro, and its FPGA build replaces
+the entire module through `fpga_pll.sv`. GF180MCU follows the FPGA route: `soc_clk_o`,
+`periph_clk_o` and `cluster_clk_o` are `ref_clk_i` wired straight through, no divider and no
+mux, which makes `ref_clk_i` the real SoC clock rather than a stand-in for one hidden behind a
+black box. `ref_clk_o`'s divide-by-40 stays structurally real, one `clkdv` instance (copied
+unmodified from both upstream files, the way each of them carries its own copy) feeding
+`low_speed_clk_i` on SPI/RTC-adjacent logic downstream.
+
+The eight-register APB file (`CTL`/`DIV`/`FRAC`/`SS1`/`SS2`/`SOC`/`PERIPH`/`CLUSTER`) stays
+readable and writable at `fpga_pll.sv`'s offsets, matching its precedent exactly: software that
+pokes FLL registers does not fault or hang, but nothing the registers hold drives an output.
+The `PD`/`PDDP`/`MODE`/`DM`/`BYPASS` decode that fed the hard PLL is gone with it, since there
+is no hardware left for those fields to configure. `LOCK` (bit 31 of `CTL`) reads back tied to
+1, so anything that polls "PLL locked" before proceeding never blocks.
+
+The five analog PLL supply ports (`AVDD`, `AVDD2`, `AVSS`, `VDDC`, `VSSC`) are gone entirely.
+Nothing analog is instantiated, so there is no supply to thread to the SoC boundary;
+`soc_peripherals.sv`'s instantiation of `apb_pll` drops the connections to match, which were
+implicit wires going nowhere in the first place (ticket 05).
+
+### Reset
+
+`safe_domain.sv`'s reset synchronization did not exist in the RTL before ticket 24 — `rst_no`
+was `assign rst_no = rst_ni`, a bare wire with no clock input at all, sitting above an
+`rstgen` instance upstream had commented out and never enabled for an ASIC target. That output
+(`s_rstn_por` in `core_v_mcu.sv`) fans out as `rstn_glob_i` into several async resets inside
+`soc_domain` (`soc_peripherals`'s `rstpin_ni`, the debug module, the JTAG DMI), so an
+unsynchronized pad-level deassert reached those flops with no recovery-time guarantee.
+
+Ticket 24 reinstates upstream's own dead code for real: `safe_domain.sv` gained a `ref_clk_i`
+port (wired from `core_v_mcu.sv`'s own top-level port, the same clock `apb_pll` bypasses), and
+`rst_no` now comes from an `rstgen` instance (`rtl/vendor/pulp_platform_common_cells/src/rstgen.sv`,
+already vendored, async assert / sync deassert) clocked by it. One instance covers both the main
+clock domain and the `/40` slow domain downstream, since a glitch-free deassertion on the fast
+clock stays glitch-free on the slow one too. No test-mode bypass exists at this level, matching
+`core_v_mcu.sv`'s own `dft_test_mode_i` tied to `'0`; no on-die debounce or power-on reset either,
+since `gf180mcu_fd_io`'s support-cell list has no POR/brownout cell and an external supervisor is
+assumed (ticket 05).
 
 ## Area budget
 
