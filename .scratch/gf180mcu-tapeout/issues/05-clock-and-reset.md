@@ -43,14 +43,21 @@ are declared nowhere. They are implicit wires going nowhere, so **no analog supp
 the SoC boundary today**. If the answer here needs an analog supply, that is new hierarchy
 to thread, not a connection to make; if it does not, the ports should come off the module.
 
-**What ticket 19 changed here, and why this is now blocked.** The target frequency cannot be
-chosen yet. `make sta`'s depth number, which every discussion of this ticket has leaned on, is
-not the design's logic depth: it reports the path with the worst pre-layout slack, and the same
-netlist that reports 35 stages carries a 90-stage path inside the CV32E40P, roughly 70 ns at
-3.3 V against the 50 ns budget. Picking a frequency against the old number would pick the wrong
-one. Ticket 22 either restores a defensible margin or establishes that 20 MHz is not reachable,
-and the clock source and reset scheme should be settled in the same conversation as the number
-rather than twice.
+**What ticket 19 changed here, and why this was blocked.** The target frequency could not be
+chosen against `make sta`'s old headline: it reported the path with the worst pre-layout
+slack, not the deepest one, and moved identity under unrelated churn.
+
+**Ticket 22 resolved this, and the number is bad news, not a green light.** Fixed metric,
+re-measured on the current (post-ticket-06) netlist: **89 stages, a 62.3 ns floor, 125% of the
+50 ns / 20 MHz budget at 3.3 V.** The 5.0 V logic-only arm has real margin (88%), but the
+supply is 3.3 V, settled by ticket 14. Re-mapping at a tighter `abc -D` target changed nothing
+(byte-identical netlist), so this is not slack synthesis left on the table. The floor already
+assumes zero wire RC and a zero-skew clock, so real numbers only get worse from here until a
+first full harden exists to measure against. Ticket 22's Answer has the full case and the
+options it leaves open: a slower clock (the floor implies a defensible target somewhere below
+16 MHz, at 3.3 V), unproven retiming, or pipelining the CV32E40P decoder path, which is new
+microarchitecture off this map. This ticket should settle the clock number against that
+finding, not against 20 MHz.
 
 ## Definition of done
 

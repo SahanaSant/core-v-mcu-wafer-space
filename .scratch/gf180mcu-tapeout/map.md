@@ -34,11 +34,16 @@ arithmetic and a per-module breakdown by instance path. Any ticket that removes 
 reconfigures RTL should quote the new flattened total rather than describing what it expects
 to have saved.
 
-**`make sta` is the exception: do not quote its headline.** Ticket 19 established that it
-reports the path with the worst pre-layout slack, which is set by unbuffered fanout rather than
-by depth, so it is not the deepest path and it changes identity under changes to unrelated
-blocks. The same netlist that reports 35 stages carries a 90-stage path inside the CV32E40P.
-Ticket 22 owns both the metric and the timing conclusion that rested on it.
+**`make sta`'s headline is trustworthy again as of ticket 22, and it is bad news.** Ticket 19
+found that a plain `report_checks -group_path_count 1` reports the path with the worst
+pre-layout slack, which pre-layout is set by unbuffered fanout rather than depth, so it moved
+identity under changes to unrelated blocks: the same netlist reported 35 stages in one
+measurement and a 90-stage CV32E40P path in the next. Ticket 22 fixed it: `sta.sh` now searches
+the 300 worst-slack candidates for whichever is actually deepest and reports its rank, so an
+unstable winner is visible rather than hidden. Re-measured on the current netlist: **89
+stages, 62.3 ns, 125% of the 50 ns / 20 MHz budget at 3.3 V**, and a tighter `abc -D` synthesis
+target changes nothing (byte-identical netlist), so this is not slack left on the table by
+synthesis. Quote this number; it is not provisional the way the old one was.
 
 As of ticket 14 both default to the **3.3 V** signoff corner `ss_125C_3v00` and a **50 ns**
 clock, so what they measure is the chip that is actually being built. `sta.sh` still reports
@@ -318,6 +323,19 @@ signed ECA covering the commit author.
   2,281,302 um2** (−8.1%), core occupancy at 35% density fell from 76.4% to **72.0%**, 3.62 mm2
   free against 3.04 mm2 before. `safe_domain.sv` turned out not to be a generated file despite
   this map's own Notes and `rtl/chip/README.md` both saying so; corrected here, it's untouched.
+- [22 `make sta` reports the wrong path, and the design is deeper than ticket 10 measured](issues/22-sta-reports-the-wrong-path.md)
+  — **Fixed the metric, and the number it was hiding is real: 20 MHz does not close at 3.3 V.**
+  `sta.sh` now asks OpenSTA for the 300 worst-slack candidates in one query and
+  `path_summary.py` reports whichever is actually deepest, with its rank printed so an unstable
+  winner stays visible (measured: the 5.0 V arm's deepest candidate ranked #39, not #1).
+  Re-measured on ticket 06's netlist: **89 stages, a 62.3 ns floor, 125% of the 50 ns budget**
+  at 3.3 V; the 5.0 V logic-only arm has real margin at 88%. The cheap experiment the ticket
+  itself suggested, re-mapping at a 2.5x tighter `abc -D` target, produced a byte-identical
+  netlist, so this is not slack synthesis left on the table. The floor already assumes zero
+  wire RC, so real numbers only get worse from here, not better, until a first full harden
+  exists. Ticket 10's "25 MHz survives on logic depth" is withdrawn. Options for ticket 05:
+  a slower clock (defensibly below 16 MHz at 3.3 V), unproven retiming, or pipelining the
+  CV32E40P decoder path, which would be new microarchitecture off this map.
 
 ## Not yet specified
 
@@ -333,19 +351,20 @@ trigger resolves.
   which is ticket 23. Both are still the last two black boxes `make elaborate` reports. Pad
   wrappers have left this patch: nothing in the SoC instantiates a pad cell, so `gf180_pads.sv`
   is `chip_top` work and graduates with the floorplan.
-- **Timing closure.** Ticket 10 looked answered and is not. **Ticket 19 withdrew its headline
-  result**: `make sta` ranks paths by pre-layout slack rather than depth, so "25 MHz holds on
-  logic depth at both voltages" described a 35-stage path that was never the deepest, and the
-  same netlist carries a 90-stage path inside the CV32E40P that is roughly 70 ns at 3.3 V. That
-  is now **ticket 22**, which is sharp and no longer fog, and it has to land before ticket 05
-  picks a clock. What stays in the fog is what still cannot be asked before there is a floorplan:
-  how much hold fixing the flow needs, what the clock tree costs once one exists for the
-  10,122-load clock net, and how much of whatever margin survives ticket 22 that wire RC eats.
-  Graduates from the first full harden. Ticket 16 made one part concrete: the clock net has
-  **54 real clock gates in it** rather than transparent black boxes, so they are 54 points CTS
-  has to balance to rather than an abstraction. Ticket 19 made a second: the SRAM arcs are now
-  real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but that is the foundry macro's timing
-  under an OCD cell name, so it is a pessimistic placeholder ticket 20 has to justify or replace.
+- **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
+  pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
+  described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
+  re-measured**: 89 stages, 62.3 ns, 125% of the 50 ns budget at 3.3 V, and a tighter `abc -D`
+  synthesis target changed nothing, so this is not slack synthesis left on the table. What
+  stays in the fog is what still cannot be asked before there is a floorplan: how much hold
+  fixing the flow needs, what the clock tree costs once one exists for the 10,122-load clock
+  net, and how much of the (already negative) 3.3 V margin wire RC eats on top of the 25%
+  shortfall ticket 22 measured. Graduates from the first full harden. Ticket 16 made one part
+  concrete: the clock net has **54 real clock gates in it** rather than transparent black
+  boxes, so they are 54 points CTS has to balance to rather than an abstraction. Ticket 19 made
+  a second: the SRAM arcs are now real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but
+  that is the foundry macro's timing under an OCD cell name, so it is a pessimistic placeholder
+  ticket 20 has to justify or replace.
 - **Hardening the macros.** `flow/config.yaml` does not exist, so nothing yet tells LibreLane
   the sixteen macros are there: `macros.yaml` pointing at their LEF, Liberty, GDS and SPICE, the
   `MAGIC_GDS_FLATGLOB` entries they will need, and `PDN_MACRO_HOOKS` for their Metal2/Metal3
@@ -383,9 +402,11 @@ trigger resolves.
   **76.4%**, 3.04 mm² free against 0.57 mm² before. The chip no longer looks area-critical, and
   the remaining question is no longer "does it fit" so much as whether it places cleanly at 35%
   density, which is still ticket 21's to answer, now with real margin behind it. What ticket 12
-  did *not* touch is ticket 22's finding that the design is roughly 70 ns deep at 3.3 V against a
-  50 ns budget — that risk is untouched by area headroom and still the more likely thing to take
-  the December date away.
+  did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
+  budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
+  cheap fix (re-mapping at a tighter target changed nothing). That risk is untouched by area
+  headroom and is now the more likely thing to take the December date away, pending ticket 05's
+  clock decision and whatever a first full harden's real CTS numbers say.
 
 ## Out of scope
 

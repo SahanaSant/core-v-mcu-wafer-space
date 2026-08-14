@@ -174,6 +174,14 @@ the AXI crossbar, at
 so the interconnect is both the second-largest block and the source of the critical path.
 That opened ticket 17.
 
+**Superseded by ticket 22: this conclusion does not hold.** The 35-stage path above is the
+single worst-slack path from a `report_checks -group_path_count 1` query, and ticket 19 later
+found that metric picks by raw arrival, not by depth, so it is not the deepest path and it
+moves identity under unrelated churn. Ticket 22 fixed the metric (search the 300 worst-slack
+candidates for the deepest, not just #1) and re-measured on the current netlist: 89 stages,
+62.3 ns, **125% of the 50 ns budget** at 3.3 V. "25 MHz survives on logic depth" was never
+true; read ticket 22's Answer for the real number.
+
 ### Basilisk
 
 Read as instructed, and it turns out mostly already banked. The 1.6x area and 2.3x timing

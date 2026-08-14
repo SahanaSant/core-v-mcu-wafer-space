@@ -13,6 +13,14 @@
 # `path_summary.py` recovers the part that is real, which is the number of
 # stages and what a properly driven stage costs. See its header.
 #
+# Ticket 22: report_checks' single worst-slack path is not the deepest path,
+# because pre-layout slack is dominated by unbuffered fanout rather than by
+# stage count, and the identity of the winner moves under unrelated RTL churn.
+# So this asks for the PATH_CANDIDATES worst-slack paths in one query
+# (-group_path_count, -unique_paths_to_endpoint, -format json) and
+# path_summary.py picks whichever of them is actually deepest, reporting its
+# rank so a candidate that only barely made the window is visible as such.
+#
 # Ticket 14 settled the core supply at 3.3 V, so ss_125C_3v00 is the signoff
 # corner and is reported first. ss_125C_4v50 is kept as the informational arm:
 # it is the margin the design gave up to reach the 3.3 V SRAM macros, and
@@ -34,6 +42,11 @@ NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
 # through them is an artefact of the flow not having built those trees yet, so
 # they are excluded rather than allowed to hide every real path behind them.
 FANOUT_LIMIT=${FANOUT_LIMIT:-500}
+
+# How many worst-slack candidates path_summary.py searches for the deepest
+# one. Measured convergence at 50, 300 and 1000 all found the same ~90-stage
+# path (ticket 22), so 300 leaves margin without the query taking long.
+PATH_CANDIDATES=${PATH_CANDIDATES:-300}
 
 PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
 LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
@@ -95,7 +108,7 @@ foreach net [get_nets *] {
     }
 }
 puts "excluded \$excluded nets above $FANOUT_LIMIT fanout"
-report_checks -path_delay max -path_group ref_clk -group_path_count 1 -digits 3
+report_checks -path_delay max -path_group ref_clk -group_path_count $PATH_CANDIDATES -unique_paths_to_endpoint -format json -digits 3
 EOF
     grep -h '^excluded' "$OUT/sta-$corner.log" || true
     "$ROOT/flow/synth/path_summary.py" \

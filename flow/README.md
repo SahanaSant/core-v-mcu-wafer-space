@@ -30,15 +30,25 @@ The template's defaults encode hard-won knowledge. Change them deliberately, not
   `tt_025C_3v30`, `ff_n40C_3v60` and `ss_125C_3v00`. The library does not change:
   `gf180mcu_fd_sc_mcu7t5v0` carries all 229 cells at every one of its fifteen corners, and
   cell geometry is identical across them, so the supply choice costs no area.
-- `CLOCK_PERIOD: 50` gives 20 MHz, revised from 40 by ticket 14. **Do not plan against
-  `make sta`'s headline number**: ticket 19 found it reports the path with the worst raw
-  arrival, which pre-layout is set by unbuffered fanout rather than by depth, so it is not the
-  deepest path and it changes identity under unrelated churn. The same netlist that reports 35
-  stages in the AXI crossbar carries a 90-stage path inside the CV32E40P, from the decoder's
-  `instr_rdata_i` to `alu_operand_a_ex`, at about 0.8 ns a stage. That is roughly 70 ns at
-  3.3 V, over budget, and it was there in ticket 10's netlist too. Ticket 22 owns it and
-  ticket 05 owns the final clock number. The memory is not the limit either way: the OCD macro
-  reports 13.46 to 15.87 ns at `ss_125C_3v00`, against a 50 ns budget.
+- `CLOCK_PERIOD: 50` gives 20 MHz, revised from 40 by ticket 14. **`make sta`'s headline is
+  trustworthy again, but the number is bad news.** Ticket 19 found that a plain
+  `report_checks -group_path_count 1` reports the path with the worst raw arrival, which
+  pre-layout is set by unbuffered fanout rather than by depth, so it moves identity under
+  unrelated churn: the same netlist reported a 35-stage AXI crossbar path in one measurement
+  and a 90-stage CV32E40P path in the next. Ticket 22 fixed this: `sta.sh` now asks OpenSTA for
+  the 300 worst-slack candidates in one query (`-group_path_count 300
+  -unique_paths_to_endpoint -format json`) and `path_summary.py` reports whichever of them has
+  the most logic stages, with its rank among the 300 printed alongside so a candidate that only
+  barely made the window is visible as such rather than silently trusted. Re-measured this way,
+  **the design does not close 20 MHz at 3.3 V**: 89 stages, a 62.3 ns floor against the 50 ns
+  budget, 125%. The 5.0 V logic-only arm has real margin, 88 stages at 44.0 ns, 88% of budget.
+  Re-mapping at a 20 ns `abc -D` target instead of 50 ns changed nothing: byte-identical cell
+  area and an identical reported path, so this is not synthesis leaving margin on the table.
+  Ticket 05 owns the final clock number against this finding, and it is not a small gap: the
+  floor already assumes every stage gets its liberty-table delay with no wire RC, so real
+  silicon is not going to do better than 62.3 ns, only worse, until CTS and buffering exist to
+  measure against. The memory is not the limit either way: the OCD macro reports 13.46 to
+  15.87 ns at `ss_125C_3v00`, against a 50 ns budget.
 - `PL_TARGET_DENSITY_PCT: 35`. Run 1 designs achieved 3k to 14k cells/mm², against a
   theoretical maximum several times higher. Plan against 8k to 12k.
 - Hold-slack margins are overfixed at 0.30 to 0.35 ns for a reason. Leave them alone.
@@ -102,8 +112,8 @@ or they survive as behavioural `always` blocks. And the design arrives at place 
 with no buffering at all on its highest-fanout nets: 10,122 loads on the SoC clock, 4,684 on
 `apb_reset`, 4,290 on a debug-control net, twenty-three nets above 500. Clock tree synthesis
 handles the first; the reset nets are `repair_design`'s problem and are worth checking
-explicitly rather than assuming. These nets are also why `make sta`'s reported path is the
-wrong one, per the clock-period note above.
+explicitly rather than assuming. These nets are also why a naive single-path `make sta` query
+picks the wrong path, per the clock-period note above.
 
 ## Macro placement
 
