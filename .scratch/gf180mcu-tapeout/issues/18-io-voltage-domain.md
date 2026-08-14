@@ -1,7 +1,7 @@
 # IO voltage domain: a 5.0 V ring over the 3.3 V core, or single supply?
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 15
 
 ## Question
@@ -79,4 +79,54 @@ the reason it could not be improved on is recorded.
 
 ## Answer
 
-<!-- filled on resolution -->
+**5.0 V ring over the 3.3 V core, split domain, via `gf180mcu_ocd_io`.** Grilled live. The
+decisive input was a use-case call only the human could make: whether the chip needs to talk
+to any real 5 V logic is not yet known, and the instruction was to try for 5 V and only fall
+back if it turns out infeasible. It doesn't turn out infeasible — both of the ticket's own
+named fallback conditions are cleared by inspection of the built PDK and a live check of the
+template:
+
+- **Variant.** `gf180mcu_ocd_io` is built `gf180mcuD`-native in the pinned PDK (ticket 15),
+  not a symlinked mismatch — the ticket-08 failure mode this ticket warned about does not
+  recur.
+- **Characterisation.** Twelve real corners, 2.5 V / 3.3 V / 5.0 V, confirmed genuinely
+  characterised rather than a header-swapped foundry file (unlike the OCD SRAM): the library's
+  own `docs/datasheet.rst` describes it as the foundry `fd_io` library plus level shifters "in
+  front of all core-facing signals, so that on the core side, all signaling is done in the
+  3.3V voltage domain," which is also this ticket's answer on where the domain crossing sits —
+  **inside each `ocd_io` pad cell** (`bi_t`, `in_c`, `in_s`, `bi_a`), not a separate shared
+  block.
+- **Template support.** A live fetch of
+  [wafer.space/gf180mcu-project-template](https://github.com/wafer-space/gf180mcu-project-template)
+  found `PAD=gf180mcu_ocd_io` already listed as a supported value alongside
+  `PAD=gf180mcu_fd_io` in its Makefile. Leo's "in the (very) near future," quoted in this
+  ticket's own text, has landed; the ring generator is not a blocker.
+- **Geometry.** Every `ocd_io` pad cell measured identical to its `fd_io` counterpart in LEF
+  (75.000 × 350.000 um for `dvdd`/`dvss`/`vdd`/`vss`/`bi_t`), so picking the split library costs
+  nothing in ring geometry or pad-slot count. The 18-pad power budget from ticket 14 is a fixed
+  total either way; this ticket only decides which cell types fill it.
+
+One of the two motivations this ticket named for going split — giving `apb_pll`'s five analog
+supply ports somewhere to land — turned out moot before this ticket resolved: ticket 05 already
+removed those ports entirely, independent of what this ticket decided.
+
+**Power pad allocation: `dvdd` 5 / `dvss` 5 / `vdd` 4 / `vss` 4**, provisional. No current data
+exists to derive this from measurement: neither `docs/datasheet.rst` (in `gf180mcu_ocd_io` or
+`gf180mcu_fd_io`) carries a drive-current table, Liberty has no headline current figure (drive
+strength is buried in CCS tables), and no `report_power` step exists anywhere in this flow. The
+allocation keeps `dvdd`=`dvss` and `vdd`=`vss` for symmetric ESD return current, biased 10
+pads to the IO rail against 8 to the core rail on the unmeasured but directional reasoning that
+SDIO/QSPI pad switching is more likely to dominate IR drop than a 10 MHz core. **Ticket 21 owns
+the real number**, once PDN analysis exists to check it against; this is a placeholder for the
+floorplan to start from, not a measured result, the same shape as ticket 14's own "9/9,
+provisional" that this supersedes.
+
+**The fallback (3.3 V single supply) is not taken.** Both conditions the ticket named for
+falling back — a variant mismatch or a template that can't build the split in time — are
+cleared, so there is nothing to fall back from. Ticket 14's single-supply baseline stays the
+documented history of how the die got here, not the final answer.
+
+Known follow-up, not new work this ticket adds: `libs.tech/librelane/gf180mcu_ocd_io/config.tcl`
+ships `PAD_CDLS ""` where `fd_io` inherits real CDL (ticket 15's finding). The SPICE exists as a
+proper hierarchical netlist; the LibreLane config just isn't pointed at it yet. Already tracked
+in the map's "DRC, LVS and antenna" fog patch, now confirmed live rather than conditional.

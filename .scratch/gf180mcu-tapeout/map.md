@@ -86,12 +86,14 @@ load-bearing, and neither warns if a later change undoes it.
 
 Standing preferences for this effort:
 
-- **The supply is 3.3 V, single rail, until ticket 18 says otherwise.** Set by ticket 14. The
-  `5v0` in `gf180mcu_fd_sc_mcu7t5v0` is the oxide, not the supply, and the library is fully
-  characterised at 3.3 V, so this is a corner override and never a library change. Four
-  LibreLane settings have to move together (`VDD_PIN_VOLTAGE`, `CELL_LIBS`, `STA_CORNERS`,
-  `DEFAULT_CORNER`) and nothing warns you if one is missed. Anything that reasons about pad
-  supplies should know that the foundry pads short the core and IO domains on purpose.
+- **The core is 3.3 V, single rail.** Set by ticket 14. The `5v0` in `gf180mcu_fd_sc_mcu7t5v0`
+  is the oxide, not the supply, and the library is fully characterised at 3.3 V, so this is a
+  corner override and never a library change. Four LibreLane settings have to move together
+  (`VDD_PIN_VOLTAGE`, `CELL_LIBS`, `STA_CORNERS`, `DEFAULT_CORNER`) and nothing warns you if one
+  is missed. **The IO ring is not single-supply**: ticket 18 split it, 5.0 V over the 3.3 V
+  core via `gf180mcu_ocd_io`, with the level shifter inside each pad cell. The foundry `fd_io`
+  pads still short the core and IO domains on purpose, which is exactly why `ocd_io` had to be
+  built to get a separate core-rail pad at all.
 - Measure before committing. Ticket 10 did this for logic area and the estimate it replaced
   was 1.66x optimistic, so treat every remaining derived number in
   `docs/porting-analysis.md` as unverified until something measures it. `make area` and
@@ -336,6 +338,17 @@ signed ECA covering the commit author.
   exists. Ticket 10's "25 MHz survives on logic depth" is withdrawn. Options for ticket 05:
   a slower clock (defensibly below 16 MHz at 3.3 V), unproven retiming, or pipelining the
   CV32E40P decoder path, which would be new microarchitecture off this map.
+- [18 IO voltage domain: a 5.0 V ring over the 3.3 V core, or single supply?](issues/18-io-voltage-domain.md)
+  — **5.0 V ring, split domain, via `gf180mcu_ocd_io`.** Grilled live: try for 5 V, fall back
+  only if infeasible, and it isn't. Both named fallback conditions clear on inspection —
+  `gf180mcuD`-native, twelve real corners, identical pad footprint to `fd_io`, and a live check
+  of the wafer.space template found `PAD=gf180mcu_ocd_io` already a supported option. The level
+  shifter sits inside each `ocd_io` pad cell, per the library's own datasheet. Power pads:
+  `dvdd` 5 / `dvss` 5 / `vdd` 4 / `vss` 4, provisional and unmeasured (no current data or
+  `report_power` step exists anywhere in this flow), superseding ticket 14's 9/9; ticket 21 owns
+  the real PDN-driven split. `apb_pll`'s analog-rail motivation for splitting turned out moot,
+  since ticket 05 already removed those ports regardless. Confirms the known `PAD_CDLS ""` LVS
+  gap in the map's fog is now live, not conditional.
 
 - [05 Clock and reset architecture without a PLL](issues/05-clock-and-reset.md)
   — **External `ref_clk_i` bypass, undivided, at 10 MHz; `apb_pll` becomes an inert stub;
@@ -419,11 +432,11 @@ trigger resolves.
   the harness's other three tests is undecided and stays in this patch.
 - **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
   needs, which are discovered by running into false errors. Graduates from a first full
-  harden. Ticket 15 added one known input: `gf180mcu_ocd_io`'s LibreLane config sets
-  `PAD_CDLS ""` where `gf180mcu_fd_io` inherits real CDL, so if ticket 18 picks the OCD pads
-  the ring has no CDL netlist for LVS as shipped. The SPICE is a proper hierarchical netlist
-  rather than a stub, so the data exists and the config is what needs pointing at it. How much
-  work that is cannot be judged before there is a pad ring to run LVS on.
+  harden. **Ticket 18 confirmed this is live, not conditional**: the ring is `gf180mcu_ocd_io`,
+  whose LibreLane config sets `PAD_CDLS ""` where `gf180mcu_fd_io` inherits real CDL, so the
+  ring has no CDL netlist for LVS as shipped. The SPICE is a proper hierarchical netlist rather
+  than a stub, so the data exists and the config is what needs pointing at it. How much work
+  that is cannot be judged before there is a pad ring to run LVS on.
 - **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
   exactly once. Late, and mechanical once the floorplan is fixed.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
