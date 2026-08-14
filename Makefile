@@ -39,7 +39,11 @@ PDK_BUILD_HOME := $(PDK_ROOT)/.build-home
 # --- Design configuration ---------------------------------------------------
 SLOT ?= 1x1
 SCL  ?= gf180mcu_fd_sc_mcu7t5v0
-PAD  ?= gf180mcu_fd_io
+# Ticket 18 split the IO ring: 5.0 V over the 3.3 V core, which the foundry
+# gf180mcu_fd_io cannot do at all (it has no core-supply pad cell and shorts the
+# two domains on purpose). Changing this back is a design change, not a tuning
+# knob. run.sh carries the same default and shadows this one, so change both.
+PAD  ?= gf180mcu_ocd_io
 # Ticket 11 committed the OCD macro. It lives in the same libs.ref directory as
 # the foundry sram512x8, which open_pdks also installs there.
 SRAM ?= gf180mcu_ocd_ip_sram
@@ -67,7 +71,7 @@ define require
 	}
 endef
 
-.PHONY: help shell pdk elaborate area sta bootrom harden sim sim-gl precheck precheck-image clean
+.PHONY: help shell pdk elaborate area sta bootrom harden harden-cts sim sim-gl precheck precheck-image clean
 
 help: ## Show this help
 	@echo "core-v-mcu-wafer-space"
@@ -99,12 +103,43 @@ sta: ## Report the critical path of the synthesised netlist (needs `make area`)
 bootrom: ## Build sw/bootrom, generate gf180_bootrom.sv, and simulate it against the image
 	@$(RUN) sh /foss/designs/flow/synth/bootrom.sh
 
-harden: ## Run LibreLane RTL-to-GDS
-	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
-	@$(RUN) librelane \
-	  --pdk-root /foss/designs/pdk --pdk $(PDK) \
+# Anything after `make harden` on the command line is passed straight to
+# LibreLane, so `make harden ARGS="--to OpenROAD.PadRing"` stops early and
+# `ARGS="--last-run --flow OpenInKLayout"` opens the previous run. The floorplan
+# steps are seconds and detailed routing is hours, so iterating with --to is how
+# the configuration gets debugged.
+ARGS ?=
+
+# The file list is regenerated from fusesoc on every fresh harden, but not when
+# resuming: `--last-run` reuses the netlist a previous run already produced, and
+# flow/synth/sources.sh starts by deleting flow/build.
+LIBRELANE = $(RUN) librelane \
+	  --pdk-root /foss/designs/pdk --pdk $(PDK) --manual-pdk \
+	  --scl $(SCL) --pad $(PAD) \
 	  --save-views-to /foss/designs/flow/final \
+	  /foss/designs/flow/slot_$(SLOT).yaml \
+	  /foss/designs/flow/macros.yaml \
+	  /foss/designs/flow/build/sources.yaml \
 	  /foss/designs/flow/config.yaml
+
+harden: ## Run LibreLane RTL-to-GDS (ARGS= passes flags through)
+	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
+	@$(RUN) sh /foss/designs/flow/synth/sources.sh
+	@$(LIBRELANE) $(ARGS)
+
+# OpenROAD's TritonCTS null-dereferences on this design roughly twenty-four
+# times in twenty-five: a real crash, intermittent rather than configuration
+# dependent, diagnosed in flow/chip_top.sdc's header. Retrying is the workaround,
+# the same shape as flow/pdk/build.sh retrying magic. This resumes the previous
+# run, so `make harden` has to have reached clock tree synthesis first, and it
+# leaves the run stopped at CTS: continue with
+# `make harden ARGS="--last-run --from OpenROAD.STAMidPNR-1"`.
+harden-cts: ## Retry clock tree synthesis on the last run until it survives
+	@i=0; until $(LIBRELANE) --last-run --from OpenROAD.CTS --to OpenROAD.CTS; do \
+	  i=$$((i+1)); \
+	  echo "clock tree synthesis crashed, retry $$i"; \
+	  test $$i -lt 200 || { echo "error: 200 attempts, giving up"; exit 1; }; \
+	done
 
 sim: ## Run RTL simulation (cocotb)
 	$(call require,$(ROOT)/sim/Makefile,see sim/README.md)

@@ -9,11 +9,12 @@ final/
 # fusesoc file list and elaboration outputs
 /flow/build/
 
-# Generated layout
-gds/
-lef/
-lib/
-spice/
+# Generated layout. Anchored under flow/, because `ip/` holds vendored
+# wafer.space marker cells whose gds/lef/lib directories are source, not output.
+/flow/gds/
+/flow/lef/
+/flow/lib/
+/flow/spice/
 
 # Simulation
 sim_build/

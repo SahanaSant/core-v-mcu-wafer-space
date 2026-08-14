@@ -13,7 +13,10 @@
 
 ROOT=${ROOT:-/foss/designs}
 CORE=openhwgroup.org:systems:core-v-mcu
-TOP=core_v_mcu
+# `core_v_mcu` is the SoC on its own, which is what every area and timing
+# measurement in this map is quoted against. `chip_top` adds the pad ring and
+# the marker cells on top of it (ticket 25) and is what `make harden` builds.
+TOP=${TOP:-core_v_mcu}
 BUILD=$ROOT/flow/build
 WORK=$BUILD/build/openhwgroup.org_systems_core-v-mcu_0/default-verilator
 
@@ -39,17 +42,27 @@ WORK=$BUILD/build/openhwgroup.org_systems_core-v-mcu_0/default-verilator
 # 512x8's. `stat -liberty $LIB` is given the standard-cell liberty alone, so the
 # macros stay out of the cell-area total and area_report.py adds them back from
 # LEF geometry. See ticket 20.
+#
+# The pad library arrives the same way, for `chip_top`. Its liberty is named for
+# the *core* corner, not the ring's: ticket 18 put a 5.0 V ring over the 3.3 V
+# core, and the PDK's LibreLane configuration maps the 3.3 V corner names onto
+# `gf180mcu_ocd_io`'s 3v30/3v63/2v97 files, so the pads are characterised at the
+# core supply rather than the 5.0 V they will actually run at. That is
+# pessimistic on the output driver and is left alone deliberately.
 gf180_liberty() {
     PDK=${PDK:-gf180mcuD}
     SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
     SRAM=${SRAM:-gf180mcu_ocd_ip_sram}
     SRAM_MACRO=${SRAM_MACRO:-gf180mcu_ocd_ip_sram__sram1024x8m8wm1}
+    PAD=${PAD:-gf180mcu_ocd_io}
     LIB_CORNER=${LIB_CORNER:-ss_125C_3v00}
+    PAD_LIB_CORNER=${PAD_LIB_CORNER:-ss_125C_2v97}
     PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
     LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
     LIB=$LIBDIR/${SCL}__${LIB_CORNER}.lib
     SRAM_LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SRAM/lib
     SRAM_LIB=$SRAM_LIBDIR/${SRAM_MACRO}__${LIB_CORNER}.lib
+    PAD_LIB=$PDK_ROOT/$PDK/libs.ref/$PAD/lib/${PAD}__${PAD_LIB_CORNER}.lib
 
     # Ticket 15 built the PDK for gf180mcuD alone, so a wrong variant name no
     # longer resolves to a real populated directory. Assert anyway: the
@@ -61,9 +74,10 @@ gf180_liberty() {
     }
     [ -r "$LIB" ] || { echo "error: no liberty at $LIB" >&2; exit 1; }
     [ -r "$SRAM_LIB" ] || { echo "error: no liberty at $SRAM_LIB" >&2; exit 1; }
+    [ -r "$PAD_LIB" ] || { echo "error: no liberty at $PAD_LIB" >&2; exit 1; }
 
     # Every liberty yosys has to load, in read order.
-    LIBS="$LIB $SRAM_LIB"
+    LIBS="$LIB $SRAM_LIB $PAD_LIB"
 }
 
 gf180_filelist() {
@@ -93,6 +107,14 @@ gf180_filelist() {
     # see gf180_liberty.
     find "$ROOT/rtl/gf180mcu" -name '*.sv' | sort >>"$WORK/gf180.f"
     echo "$ROOT/flow/synth/stubs.sv" >>"$WORK/gf180.f"
+
+    # The pad ring and the wafer.space marker cells. Always in the list, whether
+    # or not $TOP is chip_top: slang parses every file it is given, so chip_top's
+    # instantiations have to resolve either way, and the marker cells are
+    # port-less black boxes with no netlist cost. The pad cells themselves arrive
+    # from the pad liberty, see gf180_liberty.
+    find "$ROOT/rtl/chip" -name '*.sv' | sort >>"$WORK/gf180.f"
+    find "$ROOT/ip" -path '*/vh/*.v' | sort >>"$WORK/gf180.f"
 
     cd "$WORK"
 }

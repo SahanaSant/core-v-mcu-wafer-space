@@ -1,0 +1,139 @@
+# Copyright 2026 Yusef Karim
+# Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
+# SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+#
+# Slot geometry and pad ring order for the wafer.space 1x1 slot. Seeded from
+# librelane/slots/slot_1x1.yaml in the gf180mcu project template (Apache-2.0,
+# (c) 2025 Project Template Contributors).
+#
+# Every pad position below is the template's, in the template's order. The
+# template's README is explicit that the default bonding setup and the breakout
+# PCB are drawn against these positions, so the count and the order are not this
+# design's to choose; only the *type* of a signal pad is. Exactly one type
+# changed: the template's `inputs[11]` position, at the head of the west signal
+# run, is a `bi_24t` here rather than an `in_c`, because `jtag_tdo_o` is the one
+# signal outside the io array that drives and the input pads have no output
+# driver. That is why this file names `jtag_tdo_pad` where the template names
+# `inputs\[11\].pad`, and why the remaining input array is 11 wide, not 12.
+#
+# The other four differences from the template are naming, not geometry: the
+# design's own pad instances are `bidir[n].pad`, `inputs[n].pad` and so on, from
+# the generate blocks in rtl/chip/chip_top.sv.
+
+# Floorplanning
+FP_SIZING: absolute
+# 3880 x 5070 um plus 26 um of sealring on all four sides.
+DIE_AREA: [0, 0, 3932, 5122]
+CORE_AREA: [442, 442, 3490, 4680]
+
+# South: the reference clock and reset, then GPIO 0 to 13. Ticket 21 put the
+# SRAM array along this edge, so the functions that land here are deliberately
+# the slowest ones the pin table has.
+PAD_SOUTH: [
+    clk_pad,
+    rst_n_pad,
+
+    "bidir\\[0\\].pad",
+    "bidir\\[1\\].pad",
+    "bidir\\[2\\].pad",
+    "bidir\\[3\\].pad",
+    "bidir\\[4\\].pad",
+    "bidir\\[5\\].pad",
+
+    "dvss_pads\\[0\\].pad", # I/O domain
+
+    "bidir\\[6\\].pad",
+    "bidir\\[7\\].pad",
+    "bidir\\[8\\].pad",
+    "bidir\\[9\\].pad",
+    "bidir\\[10\\].pad",
+    "bidir\\[11\\].pad",
+    "bidir\\[12\\].pad",
+    "bidir\\[13\\].pad"
+]
+
+# East: GPIO 14/15, then the eight PWM channels and i2cm0.
+PAD_EAST: [
+    "dvdd_pads\\[0\\].pad", # I/O domain
+    "dvss_pads\\[1\\].pad", # I/O domain
+
+    "bidir\\[14\\].pad",
+    "bidir\\[15\\].pad",
+    "bidir\\[16\\].pad",
+    "bidir\\[17\\].pad",
+    "bidir\\[18\\].pad",
+    "bidir\\[19\\].pad",
+
+    "dvdd_pads\\[1\\].pad", # I/O domain
+    "dvss_pads\\[2\\].pad", # I/O domain
+
+    "bidir\\[20\\].pad",
+    "bidir\\[21\\].pad",
+    "bidir\\[22\\].pad",
+    "bidir\\[23\\].pad",
+    "bidir\\[24\\].pad",
+    "bidir\\[25\\].pad",
+
+    "vss_pads\\[0\\].pad",  # core domain
+    "vdd_pads\\[0\\].pad",  # core domain
+    "dvss_pads\\[3\\].pad", # I/O domain
+    "dvdd_pads\\[2\\].pad", # I/O domain
+]
+
+# North: uart0, qspim1, sdio0 and qspim0, the boot flash interface among them.
+# Both analog pads are here and both are unconnected; they hold their bonding
+# positions and nothing else (ticket 05 left this design with no analog).
+PAD_NORTH: [
+    "analog\\[1\\].pad",
+    "analog\\[0\\].pad",
+    "bidir\\[39\\].pad",
+    "bidir\\[38\\].pad",
+    "bidir\\[37\\].pad",
+    "bidir\\[36\\].pad",
+    "bidir\\[35\\].pad",
+    "bidir\\[34\\].pad",
+
+    "dvss_pads\\[4\\].pad", # I/O domain
+
+    "bidir\\[33\\].pad",
+    "bidir\\[32\\].pad",
+    "bidir\\[31\\].pad",
+    "bidir\\[30\\].pad",
+    "bidir\\[29\\].pad",
+    "bidir\\[28\\].pad",
+    "bidir\\[27\\].pad",
+    "bidir\\[26\\].pad"
+]
+
+# West: all of JTAG in one run, immediately below the core VDD/VSS pair, with
+# the I/O-domain pair between TDO and the four JTAG inputs. Then stm_i, then six
+# spare input pads, every one of them pulled down in chip_top.sv rather than
+# left floating.
+PAD_WEST: [
+    "dvdd_pads\\[5\\].pad", # I/O domain
+    "dvss_pads\\[7\\].pad", # I/O domain
+    "vdd_pads\\[1\\].pad",  # core domain
+    "vss_pads\\[1\\].pad",  # core domain
+
+    jtag_tdo_pad,
+
+    "inputs\\[0\\].pad",    # jtag_tck
+    "inputs\\[1\\].pad",    # jtag_tms
+    "inputs\\[2\\].pad",    # jtag_tdi
+    "inputs\\[3\\].pad",    # jtag_trst
+    "inputs\\[4\\].pad",    # stm_i
+
+    "dvdd_pads\\[4\\].pad", # I/O domain
+    "dvss_pads\\[6\\].pad", # I/O domain
+
+    "inputs\\[5\\].pad",    # spare
+    "inputs\\[6\\].pad",    # spare
+    "inputs\\[7\\].pad",    # spare
+    "inputs\\[8\\].pad",    # spare
+
+    "dvdd_pads\\[3\\].pad", # I/O domain
+    "dvss_pads\\[5\\].pad", # I/O domain
+
+    "inputs\\[9\\].pad",    # spare
+    "inputs\\[10\\].pad"    # spare
+]

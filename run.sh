@@ -45,7 +45,7 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e PDK="${PDK:-gf180mcuD}" \
     -e SLOT="${SLOT:-1x1}" \
     -e SCL="${SCL:-gf180mcu_fd_sc_mcu7t5v0}" \
-    -e PAD="${PAD:-gf180mcu_fd_io}" \
+    -e PAD="${PAD:-gf180mcu_ocd_io}" \
     -e SRAM="${SRAM:-gf180mcu_ocd_ip_sram}" \
     -e TOP="${TOP:-core_v_mcu}" \
     -e MODE="${MODE:-both}" \

@@ -74,6 +74,16 @@ delta as a saving. And the **`SCL=` override no longer works for other standard-
 libraries**, because `gf180_clk_gate.sv` names cells from `gf180mcu_fd_sc_mcu7t5v0`. Nothing
 needs it: `gf180mcu_as_sc_mcu7t3v3` is dead on measurement.
 
+`make harden` exists as of ticket 25 and runs LibreLane's Chip flow over four config files;
+`ARGS=` passes flags straight through, so `--to <step>` stops early and `--last-run --from
+<step>` resumes without repeating the nine-minute synthesis or the forty-five-minute design
+repair. **A single pass or a single failure of a physical step on this design is not
+evidence.** `OpenROAD.CTS` null-dereferences roughly twenty-four times in twenty-five,
+intermittently, and ticket 25 burned hours reading lucky runs as fixes before proving the
+variance by re-failing against a byte-identical configuration that had passed. Anything that
+looks like a fix for a crash in this flow needs twenty-plus attempts before it counts.
+`make harden-cts` retries CTS the way `make pdk` retries magic.
+
 `make pdk` builds the PDK from source as of ticket 15 and takes about ten minutes per attempt,
 plus two to clone. It is not reliable in one pass: magic segfaults intermittently on the
 efabless pad cell, so the build retries up to four times and a cold run can take half an hour.
@@ -471,6 +481,34 @@ signed ECA covering the commit author.
   ticket 22's documented instability of the ranked-#1 path under unrelated changes elsewhere in
   the design.
 
+- [25 Write chip_top.sv and route the design against ticket 21's floorplan](issues/25-chip-top-and-full-harden.md)
+  — **Built and measured, and it places with real headroom; it does not route, because
+  `OpenROAD.CTS` crashes on it twenty-four times in twenty-five.** `rtl/chip/chip_top.sv` and
+  `chip_core.sv`, the whole `flow/` configuration set, `ip/`'s five vendored marker cells, and
+  `flow/synth/sources.sh` so the file list has one source of truth rather than two. Pad
+  assignment turned out **not** to be this ticket's to make: the template's README fixes every
+  pad position against the default bonding setup and breakout PCB, which supersedes ticket 18's
+  provisional 5/5/4/4 power split with the template's 6/8/2/2 and leaves exactly one degree of
+  freedom, a signal pad's *type* — spent on retyping one west `in_c` to a `bi_24t` so
+  `jtag_tdo_o` gets an output-capable pad and ticket 06's spare at `io_num` 39 survives.
+  `pad_cfg_o`'s six bits, which upstream leaves undefined, are mapped onto the pad's CS/SL/IE/
+  PU/PD here and nowhere else, with the all-ones reset value landing on the safe state.
+  Sixteen macros placed **FS**, not N, so the pin band faces upward and row 1's interface meets
+  the standard cells with no channel above the array. **Measured**: 40.9% overall utilisation
+  and **25.9% standard cells** at global placement against the 35% target, so ticket 21's
+  density question is answered and the answer is that it fits. Then the number nothing had
+  priced: `RepairDesignPostGPL` inserts **61,069 buffers** into the unbuffered high-fanout
+  nets, taking standard-cell area from 2,667,750 to **4,476,590 um2** and utilisation to
+  **43.5%** — a two-thirds increase, which fits but which every earlier area figure in this map
+  excluded. `PL_MAX_DISPLACEMENT` had to go from 500x200 to 1000x1000 or the legalizer fails
+  outright. Four bugs fixed: `PAD` still defaulting to the foundry `fd_io` in *both* Makefile
+  and `run.sh` (the ticket-24 shadowing trap again), `VDD_PIN_VOLTAGE` being a **removed**
+  LibreLane variable accepted in silence, LibreLane's gf180mcu shim **deleting** the PDK's
+  `SYNTH_LATCH_MAP`, and two undriven implicit nets in `soc_domain.sv`. The CTS crash is a null
+  dereference in `separateMacroRegSinks` and it is **intermittent** — one pass, then forty
+  failures on a byte-identical configuration — so every configuration-level fix tried for it
+  was a lucky run misread. `make harden-cts` retries it; the routed run is ticket 26.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
@@ -492,8 +530,14 @@ trigger resolves.
   stays in the fog is what still cannot be asked before there is a floorplan: how much hold
   fixing the flow needs, what the clock tree costs once one exists for the 10,122-load clock
   net, and how much of the now-positive (**77%** at 3.3 V, ticket 24) margin wire RC eats once
-  a real clock tree exists to measure against. Graduates from the first full harden. Ticket 16
-  made one part
+  a real clock tree exists to measure against. Graduates from the first full harden.
+  **Ticket 25 answered the first of those three and made the second harder to reach.** How much
+  buffering the flow needs is measured now, and it is a lot: `RepairDesignPostGPL` inserts
+  **61,069 buffers** into 9,724 nets and grows standard-cell area by two thirds, 2,667,750 to
+  **4,476,590 um2**, before clock tree synthesis even starts. That is what the unbuffered
+  high-fanout nets cost, and every area figure in this map before ticket 25 excluded it. What
+  the clock tree itself costs is still open and now blocked behind an intermittent CTS crash
+  (ticket 26). Ticket 16 made one part
   concrete: the clock net has **54 real clock gates in it** rather than transparent black
   boxes, so they are 54 points CTS has to balance to rather than an abstraction. Ticket 19 made
   a second: the SRAM arcs are now real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but
@@ -526,18 +570,21 @@ trigger resolves.
   harden. **Ticket 18 confirmed this is live, not conditional**: the ring is `gf180mcu_ocd_io`,
   whose LibreLane config sets `PAD_CDLS ""` where `gf180mcu_fd_io` inherits real CDL, so the
   ring has no CDL netlist for LVS as shipped. The SPICE is a proper hierarchical netlist rather
-  than a stub, so the data exists and the config is what needs pointing at it. How much work
-  that is cannot be judged before there is a pad ring to run LVS on.
-- **Marker cells and submission packaging.** The five `gf180mcu_ws_ip__*` cells, each present
-  exactly once. Late, and mechanical once the floorplan is fixed.
+  than a stub, so the data exists and the config is what needs pointing at it. There is a pad
+  ring now (ticket 25) but still nothing to run LVS on, since the run stops at CTS; this
+  graduates from ticket 26's routed run, which is also where the `MAGIC_GDS_FLATGLOB` patterns
+  get discovered. `flow/config.yaml` carries the template's list unchanged in the meantime.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
   fallback is if it is not. Ticket 10 set the stakes at 97% occupancy; ticket 19's parameter set
   brought that to 95.6%. **Ticket 12 changed the picture more than either did**: cutting
   `apb_i2cs`, the uDMA filter and camera (measured, not estimated) dropped occupancy to
   **76.4%**, 3.04 mm² free against 0.57 mm² before. The chip no longer looks area-critical, and
   the remaining question is no longer "does it fit" so much as whether it places cleanly at 35%
-  density, which ticket 21 turned into a fixed 2x8 macro layout but only ticket 25's actual run
-  can answer, now with real margin behind it. What ticket 12
+  density, which ticket 21 turned into a fixed 2x8 macro layout. **Ticket 25 ran it and the
+  answer is yes**: global placement lands at 40.9% overall and **25.9%** standard-cell
+  utilisation against the 35% target, with no need for a different target, and the sixteen
+  macros place at their computed coordinates with a clean power grid. Design repair then takes
+  standard cells to **43.5%** on 61,069 new buffers, which still fits. What ticket 12
   did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
   budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
   cheap fix (re-mapping at a tighter target changed nothing). Ticket 23 re-measured after adding
@@ -548,7 +595,11 @@ trigger resolves.
   against 100 ns: 77.4 ns, **77%** of budget at 3.3 V, with real margin for the first time. Read
   that as the schedule question resolving, not as the logic having gotten faster — what remains
   is whether that margin survives a real clock tree and wire RC, which only a first full harden
-  can answer, and whether the design places cleanly at 35% density, ticket 25's question.
+  can answer. **Ticket 25 settled the density half and opened a new schedule risk in its
+  place.** The design places at 35% with headroom, so area is no longer the question. The
+  question is now the flow itself: `OpenROAD.CTS` crashes on this design about twenty-four
+  times in twenty-five and has to be retried, which makes every iteration through routing
+  expensive and unpredictable in a way nothing before this priced. Ticket 26 owns it.
 
 ## Out of scope
 
