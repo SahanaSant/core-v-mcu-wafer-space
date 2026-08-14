@@ -69,20 +69,29 @@ Budget an hour and keep it off the critical path of anything time-boxed. Both `m
 `make sta` take an `SCL=` override, and `flow/synth/latch_map/` holds a map for any library the
 PDK does not ship one for.
 
-Ticket 11 committed the memory, ticket 19 built it, and one standing trap sits behind them. The
-configuration is **16 KiB of L2: sixteen `gf180mcu_ocd_ip_sram__sram1024x8m8wm1`, two interleaved
-channels of 4 KiB plus two private banks of 4 KiB, contiguous from `0x1C00_0000` to
-`0x1C00_4000`**, and it is in the RTL as of ticket 19: `rtl/gf180mcu/gf180_l2_ram.sv` plus four
-patched upstream files on the submodule's local `master`. The trap
-is that **nothing in `gf180mcu_ocd_ip_sram` was characterised**: every Liberty file is a foundry
-Liberty file with the header swapped and the address bus resized, so its timing, power and
-`area` all describe a different macro. Take macro area from LEF `SIZE`, never from Liberty, where
-the error runs to 3.2x. Never conclude that an OCD macro matches a foundry one on timing, because
-that compares a file with itself. And the `sram1024x8` Verilog specify block, the one piece of
-3.3 V data that exists, is 2x optimistic on access time. Ticket 20 owns all of it. Ticket 19 built
-the defences: `area_report.py` reads LEF geometry, and `stat -liberty` is handed the standard-cell
-library alone so the macros contribute no area at all rather than the wrong area. Both are
-load-bearing, and neither warns if a later change undoes it.
+Ticket 11 committed the memory, ticket 19 built it, and one standing trap sat behind them,
+partly disarmed by ticket 20. The configuration is **16 KiB of L2: sixteen
+`gf180mcu_ocd_ip_sram__sram1024x8m8wm1`, two interleaved channels of 4 KiB plus two private
+banks of 4 KiB, contiguous from `0x1C00_0000` to `0x1C00_4000`**, and it is in the RTL as of
+ticket 19: `rtl/gf180mcu/gf180_l2_ram.sv` plus four patched upstream files on the submodule's
+local `master`. The trap was that **nothing in `gf180mcu_ocd_ip_sram` was characterised**: every
+Liberty file is a foundry Liberty file with the header swapped and the address bus resized, so
+its timing, power and `area` all described a different macro. Ticket 20 fixed what was fixable:
+Liberty `area` and `memory() { address_width }` are now patched to the real values by
+`flow/pdk/patch_ocd_sram.sh`, wired into `make pdk` so the fix survives every rebuild. Take
+macro area from LEF `SIZE` regardless, never from Liberty; that habit is what caught the bug and
+what keeps the patch from being load-bearing. Never conclude that an OCD macro matches a foundry
+one on timing, because that compares a file with itself: `make sta` signs off against the
+foundry 512x8's own Liberty arcs as a pessimistic proxy, deliberately, and ticket 20 confirmed
+that is the correct call rather than an oversight. The `sram1024x8` Verilog specify block, the
+one piece of 3.3 V data that exists, stays **2x optimistic on access time on purpose**: the only
+local number that would correct it is itself corrupted (duplicated from a different corner,
+"monotonically impossible" by the file's own admission), so patching it in would be fabrication.
+That gap is now a documented GLS-only caveat rather than an open question; revisit after the
+ORConf silicon characterisation talk in September. Ticket 19 built the other defence:
+`area_report.py` reads LEF geometry, and `stat -liberty` is handed the standard-cell library
+alone so the macros contribute no area at all rather than the wrong area. Both are load-bearing,
+and neither warns if a later change undoes it.
 
 Standing preferences for this effort:
 
@@ -381,6 +390,21 @@ signed ECA covering the commit author.
   than a parameter, and nothing currently justifies that risk — left as a known lever for
   ticket 21 if floorplan routing congestion ever calls for it, not a ticket.
 
+- [20 Correct the OCD SRAM Liberty and gate-level model](issues/20-ocd-sram-liberty-defects.md)
+  — **Two mechanical Liberty bugs patched and reproducible; the timing defect is signed off as
+  an accepted gap, not patched.** `flow/pdk/patch_ocd_sram.sh`, wired into `make pdk`, corrects
+  `sram1024x8m8wm1`'s Liberty `area` (was the foundry 512x8's `209400.2768`, now computed from
+  LEF `SIZE`: `155413.553`) and `memory() { address_width }` (was `9` against a real 10-bit
+  `bus(A)`, now `10`), in all ten corners, applied now so the fix is live. `make area` and `make
+  sta` reproduce ticket 06's and ticket 22's numbers exactly, confirming the patch moves
+  nothing: both were already dead reads (`area.sh` takes macro area from LEF, per ticket 19).
+  **The Verilog specify block's CLK->Q delay stays optimistic by ~2x, on purpose**: the only
+  local number that would correct it is itself corrupted (the file's own header already says
+  so), so patching it in would be fabrication, not correction. Sign-off is unaffected regardless
+  — `make sta` never reads this file, it already signs off against the foundry Liberty arcs as a
+  pessimistic proxy — so the gap is a GLS-only caveat, not a timing risk. No upstream report for
+  now; revisit after the ORConf silicon-characterisation talk in September.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
@@ -407,8 +431,10 @@ trigger resolves.
   concrete: the clock net has **54 real clock gates in it** rather than transparent black
   boxes, so they are 54 points CTS has to balance to rather than an abstraction. Ticket 19 made
   a second: the SRAM arcs are now real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but
-  that is the foundry macro's timing under an OCD cell name, so it is a pessimistic placeholder
-  ticket 20 has to justify or replace.
+  that is the foundry macro's timing under an OCD cell name. Ticket 20 justified rather than
+  replaced it: local characterisation isn't reachable, so this pessimistic placeholder is now
+  the deliberate sign-off basis rather than a stopgap, revisited only if the ORConf silicon
+  characterisation talk in September supplies something better.
 - **Hardening the macros.** `flow/config.yaml` does not exist, so nothing yet tells LibreLane
   the sixteen macros are there: `macros.yaml` pointing at their LEF, Liberty, GDS and SPICE, the
   `MAGIC_GDS_FLATGLOB` entries they will need, and `PDN_MACRO_HOOKS` for their Metal2/Metal3
@@ -422,10 +448,14 @@ trigger resolves.
   `$setup`/`$hold`/`$width` checks. **Verilator supports neither, so it is out.** The container
   ships Icarus Verilog 14.0, which handles both, and the harness will read
   `gf180mcu_fd_sc_mcu7t5v0.v` and `primitives.v` from the PDK rather than compiling the netlist
-  standalone. Ticket 11 put a precondition on it: the SRAM model this harness will read,
-  `gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v`, has a specify block that is **2x optimistic on access
-  time** at 3.3 V, so ticket 20 has to land first or the harness validates a chip that does not
-  exist. Ticket 04 fixed the last unknown standing between the destination's "prints over UART"
+  standalone. Ticket 11 put a precondition on it, and ticket 20 cleared it without removing the
+  underlying gap: the SRAM model this harness will read,
+  `gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v`, has a specify block that stays **2x optimistic on
+  access time** at 3.3 V, on purpose, because the only local data that would correct it is
+  itself corrupted. This no longer blocks writing the harness, but the harness carries the
+  caveat forward: a "boots and prints over UART" result from it demonstrates function, not that
+  real silicon meets the same margin, since `make sta`'s sign-off (which does carry a pessimistic
+  margin) never reads this file. Ticket 04 fixed the last unknown standing between the destination's "prints over UART"
   and this harness: boot is SPI-flash, copy-then-jump, CRC32-checked, so the hello-world image
   this harness boots is one more test image loaded exactly the way ticket 23's `sw/bootrom` loads
   any other, not a special case. Whether it needs its own `sw/app` directory or lives alongside

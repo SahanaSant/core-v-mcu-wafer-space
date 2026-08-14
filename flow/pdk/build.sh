@@ -146,6 +146,12 @@ echo "==> staging"
 
 [ -d "$BUILD/$PDK/libs.ref" ] || { echo "error: no $PDK/libs.ref under $BUILD" >&2; exit 1; }
 
+# Ticket 20: two Liberty fields on gf180mcu_ocd_ip_sram__sram1024x8m8wm1 are
+# leftovers from the foundry macro this OCD library was derived from. Patch
+# the staged tree so the fix survives every rebuild rather than being a
+# one-time hand edit.
+sh "$(dirname "$0")/patch_ocd_sram.sh" "$BUILD/$PDK"
+
 echo "==> installing to $VERSIONS/$PDK"
 rm -rf "$VERSIONS/$PDK"
 mkdir -p "$VERSIONS"
