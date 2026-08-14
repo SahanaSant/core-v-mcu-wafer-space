@@ -300,6 +300,24 @@ signed ECA covering the commit author.
   (`N_I2CM` 2→1) and shrinking GPIO (`N_GPIO` 32→16) both turned out to require regenerating
   `pad_control.sv`'s literal-indexed mux table against a real `perdef.json`, which is ticket
   06's job, not this one's — handed over as decided inputs instead of implemented here.
+- [06 Pad and IO budget: fit 57 signals into 56 pads](issues/06-pad-and-io-budget.md)
+  — **39 of 40 general IO pins assigned, one spare.** `N_APBIO` drops to 24 (gpio 16 + pwm 8).
+  Grilled live: PWM channels, a lever the ticket hadn't named, came out at 8 of 16 bonded, which
+  forced UART to one instance and the second SPI master and SDIO to their narrowest useful mode
+  (single-line, 1-bit) to fit the rest. `N_IO` 48→40, `N_GPIO` 32→16 and `N_I2CM` 2→1 (both
+  ticket 12's, implemented here), `N_UART` 2→1 (new: a never-bonded second UART is silicon with
+  no way to ever reach it). **Only some of the cuts save area**: `apb_adv_timer`, `udma_spim_top`
+  and `udma_sdio_top` are all fixed-shape upstream IP with no channel-count parameter, so bonding
+  fewer of their pins costs nothing; `N_UART` is a real generate-loop instance count, so it does.
+  `bootsel_i` removed end to end (port, `REG_BOOTSEL`, the `dmactive_i` readback it was the only
+  reader of). Elaboration surfaced two upstream bugs the resize exposed: `apb_gpio.sv`'s read
+  path had a hardcoded `[31:0]` slice the write path already guarded against; `core_v_mcu.sv`'s
+  eFPGA test-IO overlay had pad ranges hand-picked against `N_IO=48` and no real consumer left
+  since the eFPGA is gone (ticket 03), so it's simplified rather than patched. **Measured**:
+  flattened area fell from ticket 12's 89,056 cells / 2,481,680 um2 to **82,209 cells /
+  2,281,302 um2** (−8.1%), core occupancy at 35% density fell from 76.4% to **72.0%**, 3.62 mm2
+  free against 3.04 mm2 before. `safe_domain.sv` turned out not to be a generated file despite
+  this map's own Notes and `rtl/chip/README.md` both saying so; corrected here, it's untouched.
 
 ## Not yet specified
 
