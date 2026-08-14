@@ -405,6 +405,18 @@ signed ECA covering the commit author.
   pessimistic proxy — so the gap is a GLS-only caveat, not a timing risk. No upstream report for
   now; revisit after the ORConf silicon-characterisation talk in September.
 
+- [21 Floorplan, PDN and macro placement](issues/21-floorplan-and-macro-placement.md)
+  — **2 rows x 8 columns, south edge, private banks then interleaved channels, single 3.3 V
+  rail.** Ticket 11's 4x4 planning arithmetic is superseded: 2x8 (~2410 x 1132 um) leaves one
+  clean rectangle for standard cells instead of an L-shape, at equal channel-area cost. The two
+  interleaved channels pair into one row, the two private banks into the other, keeping ticket
+  11's crossbar-independence story intact at row granularity. Placement (south edge, private then
+  interleaved left to right) and power domain (single 3.3 V, ticket 18's split never touched the
+  core rail) are both settled, the first as a default to validate by routing rather than an
+  analytical conclusion. **Split rather than resolved-with-a-run**: the DoD's LibreLane-through-
+  routing half needs `chip_top.sv`, which doesn't exist, and tickets 23/24 resolved for the SoC
+  to even elaborate, so that half is now ticket 25, blocked on both.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
@@ -417,8 +429,9 @@ trigger resolves.
   `gf180_clk_gen.sv` (external bypass, inert `apb_pll` stub, 10 MHz, reinstated `rstgen` reset),
   so both `gf180_clk_gen.sv` and `gf180_bootrom.sv` — the last two black boxes `make elaborate`
   reports — are waiting only on being built and measured, ticket 24 and ticket 23 respectively.
-  Pad wrappers have left this patch: nothing in the SoC instantiates a pad cell, so
-  `gf180_pads.sv` is `chip_top` work and graduates with the floorplan.
+  Pad wrappers have left this patch: nothing in the SoC instantiates a pad cell, and now that
+  ticket 21 settled the floorplan, writing `chip_top.sv` and the pad ring is ticket 25's job,
+  blocked on 23 and 24.
 - **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
   pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
   described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
@@ -435,11 +448,6 @@ trigger resolves.
   replaced it: local characterisation isn't reachable, so this pessimistic placeholder is now
   the deliberate sign-off basis rather than a stopgap, revisited only if the ORConf silicon
   characterisation talk in September supplies something better.
-- **Hardening the macros.** `flow/config.yaml` does not exist, so nothing yet tells LibreLane
-  the sixteen macros are there: `macros.yaml` pointing at their LEF, Liberty, GDS and SPICE, the
-  `MAGIC_GDS_FLATGLOB` entries they will need, and `PDN_MACRO_HOOKS` for their Metal2/Metal3
-  perimeter rings. Ticket 19 put the instances in the netlist and stopped at the flow boundary.
-  Mostly ticket 21's, since placement and power routing are the same conversation.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
   technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
@@ -475,7 +483,8 @@ trigger resolves.
   `apb_i2cs`, the uDMA filter and camera (measured, not estimated) dropped occupancy to
   **76.4%**, 3.04 mm² free against 0.57 mm² before. The chip no longer looks area-critical, and
   the remaining question is no longer "does it fit" so much as whether it places cleanly at 35%
-  density, which is still ticket 21's to answer, now with real margin behind it. What ticket 12
+  density, which ticket 21 turned into a fixed 2x8 macro layout but only ticket 25's actual run
+  can answer, now with real margin behind it. What ticket 12
   did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
   budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
   cheap fix (re-mapping at a tighter target changed nothing). That risk is untouched by area
