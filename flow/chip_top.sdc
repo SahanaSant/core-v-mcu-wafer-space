@@ -54,7 +54,7 @@ create_clock {*}$port_args -name $clock_port -period $::env(CLOCK_PERIOD)
 #   cts::TritonCTS::initClock(...)
 #   cts::TritonCTS::initOneClockTree(...)   x11, recursing
 #
-# It is **intermittent, at roughly one success in twenty-five**, and that is the
+# It is **intermittent, and rare: one success in roughly a hundred attempts**, and that is the
 # part that matters, because it makes every single-shot experiment worthless.
 # The proof is direct: one attempt passed, and re-running the very same step
 # later against the byte-identical resolved SDC that pass had emitted, from the

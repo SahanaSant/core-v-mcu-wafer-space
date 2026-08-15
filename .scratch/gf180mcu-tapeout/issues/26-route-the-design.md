@@ -11,7 +11,7 @@ the design as far as a legalised placement with a clean power grid: 40.9% overal
 25.9% standard cells before design repair and 43.5% after, against a 35% target. What it could
 not do is finish the run, and the reason is a tool crash rather than anything about the design.
 
-**`OpenROAD.CTS` null-dereferences on this design roughly twenty-four times in twenty-five**,
+**`OpenROAD.CTS` null-dereferences on this design on all but roughly one attempt in a hundred**,
 in `dbNet::get1stSignalInput` called from `separateMacroRegSinks`. It is intermittent: ticket
 25 saw one pass and then about forty failures against a byte-identical configuration and the
 same placement database, which is why every configuration-level "fix" it tried turned out to

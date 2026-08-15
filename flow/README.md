@@ -88,7 +88,7 @@ The template's defaults encode hard-won knowledge. Change them deliberately, not
   template's search distance `detailed_placement` could not find room for 425 of them and
   failed outright (`DPL-0036`). The core is only a quarter full at that point, so the space
   exists; it is further away than the default will look.
-- **`OpenROAD.CTS` crashes on this design about twenty-four times in twenty-five, and has to
+- **`OpenROAD.CTS` crashes on this design on all but roughly one attempt in a hundred, and has to
   be retried.** It is a null dereference in TritonCTS (`dbNet::get1stSignalInput` from
   `separateMacroRegSinks`), and it is intermittent rather than configuration-dependent:
   ticket 25 got one pass and then failed against the byte-identical resolved SDC that pass

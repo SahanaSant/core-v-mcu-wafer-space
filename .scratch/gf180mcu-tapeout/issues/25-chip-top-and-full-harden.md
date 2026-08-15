@@ -55,7 +55,7 @@ precheck.
 
 **Built the top level and the whole LibreLane configuration, and the design places, legalises
 and passes the power grid check with real margin. It does not route yet, and the reason is not
-the design: `OpenROAD.CTS` null-dereferences on it about twenty-four times in twenty-five.**
+the design: `OpenROAD.CTS` null-dereferences on it on all but roughly one attempt in a hundred.**
 The Definition of Done asked for a completed run through detailed routing, so this ticket does
 not meet it; the routed run is spun off as ticket 26, the same shape as tickets 04 and 05
 spinning off 23 and 24, and 21 spinning off this one.

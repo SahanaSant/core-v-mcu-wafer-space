@@ -127,8 +127,8 @@ harden: ## Run LibreLane RTL-to-GDS (ARGS= passes flags through)
 	@$(RUN) sh /foss/designs/flow/synth/sources.sh
 	@$(LIBRELANE) $(ARGS)
 
-# OpenROAD's TritonCTS null-dereferences on this design roughly twenty-four
-# times in twenty-five: a real crash, intermittent rather than configuration
+# OpenROAD's TritonCTS null-dereferences on this design on all but roughly one
+# attempt in a hundred: a real crash, intermittent rather than configuration
 # dependent, diagnosed in flow/chip_top.sdc's header. Retrying is the workaround,
 # the same shape as flow/pdk/build.sh retrying magic. This resumes the previous
 # run, so `make harden` has to have reached clock tree synthesis first, and it

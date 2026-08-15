@@ -78,7 +78,7 @@ needs it: `gf180mcu_as_sc_mcu7t3v3` is dead on measurement.
 `ARGS=` passes flags straight through, so `--to <step>` stops early and `--last-run --from
 <step>` resumes without repeating the nine-minute synthesis or the forty-five-minute design
 repair. **A single pass or a single failure of a physical step on this design is not
-evidence.** `OpenROAD.CTS` null-dereferences roughly twenty-four times in twenty-five,
+evidence.** `OpenROAD.CTS` null-dereferences on all but roughly one attempt in a hundred,
 intermittently, and ticket 25 burned hours reading lucky runs as fixes before proving the
 variance by re-failing against a byte-identical configuration that had passed. Anything that
 looks like a fix for a crash in this flow needs twenty-plus attempts before it counts.
@@ -483,7 +483,7 @@ signed ECA covering the commit author.
 
 - [25 Write chip_top.sv and route the design against ticket 21's floorplan](issues/25-chip-top-and-full-harden.md)
   — **Built and measured, and it places with real headroom; it does not route, because
-  `OpenROAD.CTS` crashes on it twenty-four times in twenty-five.** `rtl/chip/chip_top.sv` and
+  `OpenROAD.CTS` crashes on it on all but roughly one attempt in a hundred.** `rtl/chip/chip_top.sv` and
   `chip_core.sv`, the whole `flow/` configuration set, `ip/`'s five vendored marker cells, and
   `flow/synth/sources.sh` so the file list has one source of truth rather than two. Pad
   assignment turned out **not** to be this ticket's to make: the template's README fixes every
