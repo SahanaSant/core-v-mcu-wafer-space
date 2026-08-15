@@ -82,7 +82,9 @@ evidence.** `OpenROAD.CTS` null-dereferences on all but roughly one attempt in a
 intermittently, and ticket 25 burned hours reading lucky runs as fixes before proving the
 variance by re-failing against a byte-identical configuration that had passed. Anything that
 looks like a fix for a crash in this flow needs twenty-plus attempts before it counts.
-`make harden-cts` retries CTS the way `make pdk` retries magic.
+`make harden-cts` retries CTS the way `make pdk` retries magic. **A newer OpenROAD does not
+fix it**: 26Q3-1193 against the pinned LibreLane crashes ten times out of ten, though it gets
+further, dying on clock nets TritonCTS generated itself rather than on netlist nets.
 
 `make pdk` builds the PDK from source as of ticket 15 and takes about ten minutes per attempt,
 plus two to clone. It is not reliable in one pass: magic segfaults intermittently on the

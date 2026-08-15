@@ -19,6 +19,34 @@ be a lucky run. The stack trace, the things that were tried, and the two clock c
 that are currently left out because of it are all written down in `flow/chip_top.sdc`'s
 header.
 
+**A newer OpenROAD is not the answer, and that is measured rather than assumed.** The pinned
+container carries OpenROAD `26Q3-850-gc74892e7b`; `hpretl/iic-osic-tools:next` carries
+`26Q3-1193-gec94b92b3`, 343 commits ahead, but it also *downgrades* LibreLane to 3.0.8, which
+rejects `CELL_LIBS` and `PDN_CORE_RING_CONNECT_TO_PAD_LAYERS` — the settings carrying ticket
+14's 3.3 V corner and this design's pad-ring PDN connection. So the two were combined
+directly, in a throwaway image that keeps the pinned LibreLane 3.1.0.dev2 and replaces only
+`/foss/tools/openroad`:
+
+```
+FROM hpretl/iic-osic-tools:next AS ordnext
+FROM hpretl/iic-osic-tools:2026.07
+COPY --from=ordnext /foss/tools/openroad /foss/tools/openroad
+```
+
+**Ten attempts, ten crashes, same null dereference.** What did change is how far it gets: the
+newer OpenROAD builds a substantial clock tree first, emitting `CTS-0105` for nets like
+`clknet_leaf_170_clk_PAD2CORE_regs` and inserting real clock buffers, and only then dies. That
+sharpens the hypothesis considerably. The crash is on TritonCTS's **own generated `_regs`
+nets**, not on nets from the netlist, so the thing to look at is what `separateMacroRegSinks`
+does when a net it created has an unbalanced sink set — this design puts sixteen SRAM `CLK`
+pins on the clock as macro sinks, and a leaf net with only macro sinks and no register sinks
+(or the reverse) is the obvious candidate for the null. Test that before anything else.
+
+Ruled out, so do not spend time re-testing: memory, the SDC (a byte-identical resolved SDC
+that passed once failed on retry), the JTAG and divided clocks, `set_clock_groups`, the
+`jtag_tdo` output delay, `CTS_SINK_CLUSTERING_ENABLE`, `CTS_OBSTRUCTION_AWARE`,
+`CTS_DISABLE_POST_PROCESSING`, `CTS_BALANCE_LEVELS`, and OpenROAD 26Q3-1193.
+
 What has to happen:
 
 - **Get past CTS.** `make harden-cts` retries the step until it survives, resuming the
