@@ -1,0 +1,78 @@
+From 4fca2f089b904bb9a359cec37b0270899b92642d Mon Sep 17 00:00:00 2001
+From: Yusef Karim <yusefkarim@riseup.net>
+Date: Fri, 14 Aug 2026 22:25:08 -0400
+Subject: [PATCH] cts: guard against a null downstream net in
+ separateMacroRegSinks
+
+TritonCTS's characterization phase (configure_cts_characterization)
+places dummy load instances (named by CtsOptions::getDummyLoadPrefix(),
+"clkload" by default) on real, already-populated clock nets to
+measure buffer/inverter delay and slew under representative fanout.
+Those dummy instances' output pins are deliberately left unconnected,
+since they exist to be loads, not drivers.
+
+separateMacroRegSinks(), when later re-partitioning a net's sinks into
+macro and register buckets, walks every ITerm on the net and, for any
+whose master Liberty-qualifies as an inverter, unconditionally follows
+inst->getFirstOutput()->getNet()->get1stSignalInput(false) to decide
+whether the inverter drives a macro downstream. This assumes every
+inverter found on a clock net is a real pass-through stage with a
+valid downstream net. It has no exclusion for characterization-only
+instances and no null check on the result, so when the net being
+processed happens to also carry one of these dummy loads,
+getFirstOutput()->getNet() returns nullptr and the call segfaults.
+
+The crash is intermittent (roughly 1 in 100 runs on the design that
+found this) because it only fires when two independently-nondeterministic
+selections happen to coincide: which nets configure_cts_characterization
+picks to attach a dummy load to, and which nets separateMacroRegSinks
+later happens to reprocess. Both depend on OpenDB's unordered-container
+iteration order.
+
+Guard the output net and the result of get1stSignalInput() before
+dereferencing either. When the inverter's output is unconnected (the
+dummy-load case) or its net has no signal input, leave nonSinkMacro as
+already computed from isSink() rather than following a null pointer.
+
+Confirmed against a live coredump (rdi == 0x0 at the fault, i.e. the
+dbNet* receiver of get1stSignalInput was null) and against the design's
+own CTS checkpoint database, where all characterization dummy loads
+with a floating output were found wired by their input pin onto real,
+shared clock nets alongside genuine register clock pins.
+---
+ src/cts/src/TritonCTS.cpp | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/src/cts/src/TritonCTS.cpp b/src/cts/src/TritonCTS.cpp
+index 75bbd80..13c1dc0 100644
+--- a/src/cts/src/TritonCTS.cpp
++++ b/src/cts/src/TritonCTS.cpp
+@@ -1495,9 +1495,22 @@ bool TritonCTS::separateMacroRegSinks(
+       sta::Cell* masterCell = network_->dbToSta(mterm->getMaster());
+       sta::LibertyCell* libertyCell = network_->libertyCell(masterCell);
+       if (libertyCell && libertyCell->isInverter()) {
+-        odb::dbITerm* invertedTerm
+-            = inst->getFirstOutput()->getNet()->get1stSignalInput(false);
+-        nonSinkMacro &= invertedTerm->getInst()->isBlock();
++        // The inverter's output pin may be legitimately unconnected: CTS's
++        // own characterization phase (configure_cts_characterization)
++        // places dummy "<dummyload_prefix_>NNN" instances (see
++        // CtsOptions::getDummyLoadPrefix) on real clock nets to measure
++        // delay/slew under representative fanout, and those instances'
++        // outputs are deliberately left floating. Treating every Liberty
++        // inverter found on a net as a real pass-through stage with a
++        // valid downstream net null-derefs on exactly that case.
++        odb::dbITerm* outputTerm = inst->getFirstOutput();
++        odb::dbNet* outputNet = outputTerm ? outputTerm->getNet() : nullptr;
++        if (outputNet) {
++          odb::dbITerm* invertedTerm = outputNet->get1stSignalInput(false);
++          if (invertedTerm) {
++            nonSinkMacro &= invertedTerm->getInst()->isBlock();
++          }
++        }
+       }
+ 
+       if (hasInsertionDelay(inst, mterm) || nonSinkMacro || inst->isBlock()) {
+-- 
+2.55.0
+

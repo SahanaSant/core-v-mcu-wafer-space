@@ -1,6 +1,10 @@
 # PDK fetched by `make pdk`
 /pdk/
 
+# Locally-built OpenROAD source/patch/build trees (ticket 26). Not fetched by
+# any make target; see flow/openroad/README.md for how each one was built.
+/openroad-build/
+
 # LibreLane outputs
 runs/
 final/
