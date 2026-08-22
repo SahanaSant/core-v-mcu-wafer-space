@@ -21,13 +21,20 @@
 # the core area rather than carried over from ticket 11's 4x4 planning
 # arithmetic, which ticket 21 superseded.
 #
-#   columns   760.00 + n * 301.300, n = 0..7, abutted.
-#             2410.40 um of macro in 3048 um of core, centred, leaving 318.00 um
-#             on the left and 319.60 um on the right for standard cells beside
-#             the array. The macros abut because every signal pin is on the
-#             short edge, so no vertical channel buys anything; the LEF leaves a
-#             3 um frame free of Metal1 to Metal3 on each side, so abutted
-#             neighbours still present a 6 um gap on those layers.
+#   columns   760.00 + n * 302.300, n = 0..7, a real 1 um gap between neighbours
+#             (ticket 27). 2417.40 um of macro in 3048 um of core, leaving
+#             318.00 um on the left and 312.60 um on the right for standard
+#             cells beside the array. The macros do **not** abut: ticket 27's
+#             full-chip KLayout DRC found 197 real M3.2a/M3.2b violations, all
+#             at these seven column boundaries, because the LEF's declared "3 um
+#             frame free of Metal1 to Metal3" on each macro edge does not match
+#             the real GDS — Metal3 (both full-width straps and edge-reaching
+#             comb fingers) runs flush to the true macro boundary on all sides,
+#             confirmed by walking the macro's own GDS. Abutting at the old
+#             301.300 pitch put two macros' real Metal3 within 2-10 nm of each
+#             other, not the 6 um the comment here used to claim. 1 um clears
+#             the 0.28/0.3 um rule with margin against every measured gap
+#             (worst case was 0.285 um short of the 0.3 um M3.2b threshold).
 #   row 0     y = 502.00, private banks 0 and 1, four byte lanes each.
 #   row 1     y = 1118.00, interleaved channels 0 and 1, four byte lanes each.
 #
@@ -149,25 +156,25 @@ MACROS:
         location: [760.00, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri0_i.i_bank.gen_byte_lane[1].i_sram:
-        location: [1061.30, 502.00]
+        location: [1062.30, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri0_i.i_bank.gen_byte_lane[2].i_sram:
-        location: [1362.60, 502.00]
+        location: [1364.60, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri0_i.i_bank.gen_byte_lane[3].i_sram:
-        location: [1663.90, 502.00]
+        location: [1666.90, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri1_i.i_bank.gen_byte_lane[0].i_sram:
-        location: [1965.20, 502.00]
+        location: [1969.20, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri1_i.i_bank.gen_byte_lane[1].i_sram:
-        location: [2266.50, 502.00]
+        location: [2271.50, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri1_i.i_bank.gen_byte_lane[2].i_sram:
-        location: [2567.80, 502.00]
+        location: [2573.80, 502.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.bank_sram_pri1_i.i_bank.gen_byte_lane[3].i_sram:
-        location: [2869.10, 502.00]
+        location: [2876.10, 502.00]
         orientation: FS
 
       # Row 1, y = 1118.00: interleaved channel 0, then interleaved channel 1.
@@ -175,25 +182,25 @@ MACROS:
         location: [760.00, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[0].bank_i.i_bank.gen_byte_lane[1].i_sram:
-        location: [1061.30, 1118.00]
+        location: [1062.30, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[0].bank_i.i_bank.gen_byte_lane[2].i_sram:
-        location: [1362.60, 1118.00]
+        location: [1364.60, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[0].bank_i.i_bank.gen_byte_lane[3].i_sram:
-        location: [1663.90, 1118.00]
+        location: [1666.90, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[1].bank_i.i_bank.gen_byte_lane[0].i_sram:
-        location: [1965.20, 1118.00]
+        location: [1969.20, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[1].bank_i.i_bank.gen_byte_lane[1].i_sram:
-        location: [2266.50, 1118.00]
+        location: [2271.50, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[1].bank_i.i_bank.gen_byte_lane[2].i_sram:
-        location: [2567.80, 1118.00]
+        location: [2573.80, 1118.00]
         orientation: FS
       i_chip_core.i_core_v_mcu.i_soc_domain.l2_ram_i.CUTS[1].bank_i.i_bank.gen_byte_lane[3].i_sram:
-        location: [2869.10, 1118.00]
+        location: [2876.10, 1118.00]
         orientation: FS
 
 # The macros carry no power ports in the RTL (rtl/gf180mcu/gf180_l2_ram.sv
