@@ -251,3 +251,48 @@ Keeping the `dly*` exclusion regardless. It does not change the buffer count, bu
 count it swaps a 54.88-area, 2.284 ns cell for a 13.17-area, 0.210 ns one across 17,002
 instances, which is real area and real delay off the critical paths whatever happens to
 routability.
+
+### 2026-08-22: `MAX_FANOUT_CONSTRAINT: 40` cuts 28.5%, and the pad table names the next lever
+
+`RUN_2026-08-22_17-27-47`, `dly*` excluded and the fanout limit at 40:
+
+```
+[INFO RSZ-0034] Found 18260 slew violations.
+[INFO RSZ-0035] Found 400 fanout violations.
+[INFO RSZ-0036] Found 2754 capacitance violations.
+[INFO RSZ-0038] Inserted 47478 buffers in 10035 nets.
+```
+
+47,478 against 66,377, so **18,899 fewer buffers, a 28.5% cut**, and the design lands at
+209,852 instances instead of 228,751. Fanout violations came in at 400 against the 413 the
+static prediction gave. Capacitance violations roughly doubled, 1,327 to 2,754, which is the
+expected trade: fewer fanout buffers means more load per driver, and cap repair is the checker
+that should be catching that because it is the one measuring something physical.
+
+**It did not touch the pad-driven nets.** JTAG TCK is still 3,377 buffers, its neighbour still
+3,352, `stm_i` still 739. Charging every buffer to the pad net it descends from:
+
+| buffers | fanout | per load | pad cell | instance |
+| --- | --- | --- | --- | --- |
+| 3,377 | 258 | 13.1 | `in_c` | `inputs[0].pad` |
+| 3,352 | 257 | 13.0 | `in_c` | `inputs[3].pad` |
+| 739 | 54 | 13.7 | `in_c` | `inputs[4].pad` |
+| 81 | 13 | 6.2 | `in_c` | `inputs[1].pad` |
+| 8 | 5 | 1.6 | `in_c` | `rst_n_pad` |
+| **0** | **5,780** | **0.0** | `in_s` | **`clk_pad`** |
+
+The last row is the whole answer. `clk_pad` drives **5,780** loads, twenty-two times the JTAG
+pad's 258, and takes **zero** repair buffers, because `flow/chip_top.sdc` puts a `create_clock`
+on it and `repair_design` leaves clock nets to CTS. The JTAG pad has no `create_clock`, so it
+is repaired as data and costs 3,377 buffers to reach a twenty-second of the loads. Nothing
+else distinguishes the two rows: same pad family, same die, same run.
+
+So the SDC's own note was right about the mechanism and understated the price. It says the
+unconstrained domains "are still buffered by `repair_design` as ordinary high-fanout nets" and
+that the cost is losing a balanced tree. The cost is 7% of every buffer in the design on one
+net, plus whatever the neighbouring 3,352 turn out to be worth once the domain has a clock at
+all. This is no longer a judgement call about whether an extra CTS tree is worth the crash
+risk: ticket 26's patched OpenROAD removes the crash, and this run is already using it.
+
+Holding the SDC change until the current route reports, so the 28.5% cut gets a clean reading
+against the recorded 512,491 iteration-0 violations before a second variable moves.
