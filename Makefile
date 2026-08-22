@@ -156,8 +156,8 @@ precheck-image: ## Build the wafer.space precheck container
 
 precheck: ## Check the final GDS against wafer.space submission rules
 	$(call require,$(FINAL_GDS),run `make harden` first)
-	@$(ENGINE) run --rm -v $(ROOT):/work:z $(PRECHECK_IMAGE) \
-	  --top $(TOP) --slot $(SLOT) /work/flow/final/gds/$(TOP).gds
+	@$(ENGINE) run --rm --network=none -v $(dir $(FINAL_GDS)):/data:z $(PRECHECK_IMAGE) \
+	  python precheck.py --input /data/$(TOP).gds --top $(TOP) --slot $(SLOT) --dir /data
 
 clean: ## Remove flow outputs (keeps the PDK)
 	@rm -rf $(ROOT)/flow/runs $(ROOT)/flow/final $(ROOT)/flow/build $(ROOT)/sim/sim_build
