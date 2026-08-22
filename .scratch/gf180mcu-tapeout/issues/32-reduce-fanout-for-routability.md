@@ -296,3 +296,47 @@ risk: ticket 26's patched OpenROAD removes the crash, and this run is already us
 
 Holding the SDC change until the current route reports, so the 28.5% cut gets a clean reading
 against the recorded 512,491 iteration-0 violations before a second variable moves.
+
+### 2026-08-22: the route converges. The premise of this ticket was wrong
+
+`RUN_2026-08-22_17-27-47` carried through to detailed routing, patched OpenROAD image, same
+`-or_seed 42`, so this is the A/B the Notes asked for.
+
+**Global routing.** One pass, not the three the previous run needed, and it disabled NDR on
+two `delaynet_*` nets rather than grinding through them. Total wirelength **20,850,118 um to
+14,035,366 um, down 32.7%**. That is the routability result: congestion is wire demand against
+supply, and a third of the demand is gone.
+
+**Detailed routing**, against the recorded baseline:
+
+| iteration | before | now |
+| --- | --- | --- |
+| 0 | 512,491 | **61,300** |
+| 1 | | 22,535 |
+| 2 | | 21,079 |
+| 3 | ~326,000 | **1,433** |
+
+The old route spent three iterations getting from 512K to 326K and then flattened, gaining
+under 1% per iteration at one to three hours each, which is what convinced ticket 29 the step
+could not finish. This one is at 1,433 by iteration 3.
+
+**So the ticket's premise was wrong, and worth stating plainly.** The title says "reduce
+broadcast fanout", and the Question argues from 64,734 emergency buffers and 26.6% placement
+density that the congestion is structural to the RTL's broadcast and control fanout, fixable
+only by pipelining or buffering signals in RTL. No RTL changed. The SoC reset still drives
+about 8,500 sinks in two polarities. What changed is two lines of flow configuration, and the
+fanout constraint was not a victim of the RTL's fanout, it was the cause of the congestion:
+
+- `MAX_FANOUT_CONSTRAINT` 10 to 40. This is the one that matters. Its repair degenerates into
+  single-load buffer chains averaging 1.1 fanout, thirteen to eighteen deep, and the netlist it
+  produces does not satisfy the limit anyway.
+- `EXTRA_EXCLUDED_CELLS: dly*`. Neutral on count, but 17,002 instances at 13.17 area and
+  0.210 ns instead of 54.88 and 2.284 ns.
+
+The 64,734 buffers were real and the density measurement was real. The inference from them to
+"the RTL is at fault" is what did not hold, and it held up ticket 29 and everything behind it
+for two days. The lesson worth keeping is that the buffers a resizer inserts are evidence
+about the resizer's constraints first and about the netlist second.
+
+Still outstanding and now measurable on a converging route: the JTAG `create_clock`, worth
+3,377 buffers on one net by the pad table above.
