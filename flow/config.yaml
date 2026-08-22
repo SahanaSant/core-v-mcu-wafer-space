@@ -167,6 +167,26 @@ GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 PL_TARGET_DENSITY_PCT: 35
 GRT_ALLOW_CONGESTION: true
 
+# Ticket 32: keep the delay cells away from the resizer. Every one of
+# RepairDesignPostGPL's 16,518 max-fanout repair buffers was a dlyb_1, a cell
+# that exists to add delay on purpose, while wire-length and slew repair picked
+# sensible buf/clkbuf sizes. OpenROAD's fanout repair uses the library's
+# lowest-drive buffer, and drive resistance off the tt_025C_3v30 arcs is
+# 13.52 ns/pF for dlyb_1 against 13.48 for buf_1: a 0.3% difference selecting a
+# cell with 2.67x the area and 1.02 ns more intrinsic delay per stage. The
+# result cascades, because each weak slow stage re-violates slew at its own
+# output: the JTAG TCK domain's 258 loads were reached through 3,259 buffers
+# across 29 levels, about 100x a balanced tree at the fanout limit of 10.
+#
+# Nothing in this design uses dlyb for what it is for. Synthesis emits none,
+# ResizerTimingPostCTS removed some rather than adding any, and the 73
+# delaynet_*_clk_PAD hold-fix nets are driven by clkbuf_8/clkbuf_16.
+#
+# This excludes from synthesis as well as PnR, which costs nothing: Yosys never
+# maps to a delay buffer.
+EXTRA_EXCLUDED_CELLS:
+  - "gf180mcu_fd_sc_mcu7t5v0__dlyb_*"
+
 # Ticket 29: global routing's "extra iterations to remove overflow" loop
 # (LibreLane default 50) restarts from iteration 1 every time it disables NDR
 # on a congested net. This design has 73 delaynet_*_clk_PAD nets (hold-fix
