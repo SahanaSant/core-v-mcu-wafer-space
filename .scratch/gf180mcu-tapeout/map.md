@@ -647,23 +647,6 @@ trigger resolves.
   post-route timing gap is closable by configuration or needs microarchitecture change is still
   open.
 
-- **The detailed-routing plateau looks structural to the RTL's fanout, not to flow
-  configuration.** Ticket 29 ruled out the cheap levers (`DRT_OPT_ITERS` is not a safe cap the
-  way `GRT_OVERFLOW_ITERS` was, and `MAX_FANOUT_CONSTRAINT` correctly defaults to 10 for this
-  PDK) and root-caused the congestion with real evidence rather than "large designs are slow":
-  global placement density is only 26.6%, well under even this repo's conservative 35% target,
-  so this is localized congestion rather than whole-chip overpacking. The most plausible source
-  is where `RepairDesignPostGPL`'s 64,734 emergency buffers (28% of the design's ~231K final
-  instances) and the 73 `delaynet_*_clk_PAD` hold-fix NDR nets cluster, which points at the
-  RTL's own broadcast/control fanout. A real fix would be RTL-level (buffering or pipelining
-  broadcast signals, or a less-flattened synthesis), which is a different kind of change from
-  anything this map has made so far and is not sharp enough to ticket yet. Graduates if the
-  plateau keeps costing multi-hour routes: the 2026-08-20 resume opened with 512,491 violations
-  on iteration 0, bit-identical to the run before it, so it is not going away on its own.
-  **Graduated 2026-08-21 into [Reduce broadcast fanout so detailed routing can
-  converge](issues/32-reduce-fanout-for-routability.md)**, after the resumed route got past
-  iteration 11 and showed the step cannot finish: see ticket 29 for the two curves.
-
 - **Whether boot should stay ROM-resident at all.** Raised 2026-08-21 after ticket 31 found
   the boot ROM never issues a single SPI transaction in 100 ms and, separately, that nothing in
   it can be tested without re-hardening, because `gen_bootrom.py` compiles the image into a case

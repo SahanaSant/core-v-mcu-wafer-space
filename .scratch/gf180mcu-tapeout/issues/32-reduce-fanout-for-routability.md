@@ -140,3 +140,51 @@ fanout table at 5,773 but is the real clock, which CTS handles.
 
 Applied lever 1 only, as `EXTRA_EXCLUDED_CELLS` in `flow/config.yaml`. The A/B is the
 iteration-0 detailed-routing violation count against the recorded 512,491.
+
+### 2026-08-22: first A/B, and the exclusion was too narrow
+
+`RUN_2026-08-22_14-38-59`, `EXTRA_EXCLUDED_CELLS: [dlyb_*]`, stopped at
+`OpenROAD.RepairDesignPostGPL`:
+
+```
+[INFO RSZ-0034] Found 18052 slew violations.
+[INFO RSZ-0035] Found 2040 fanout violations.
+[INFO RSZ-0036] Found 1326 capacitance violations.
+[INFO RSZ-0038] Inserted 66240 buffers in 10022 nets.
+```
+
+66,240 against the previous run's 64,734, so the count went **up**. Attribution shows why:
+every one of the 17,002 `fanout*` instances is now a `dlyc_1`. Excluding one delay family
+promoted the next. This library has four of them, and sorted by drive resistance off the
+`tt_025C_3v30` arcs they all sit at or above `buf_1`:
+
+| cell | drive R (ns/pF) | intrinsic (ns) | area |
+| --- | --- | --- | --- |
+| `dlyc_1` | 13.53 | 2.284 | 54.88 |
+| `dlyd_1` | 13.53 | 3.299 | 74.64 |
+| `dlyb_1` | 13.52 | 1.229 | 35.12 |
+| `dlya_1` | 13.48 | 0.528 | 24.15 |
+| `buf_1` | 13.48 | 0.210 | 13.17 |
+| `clkbuf_1` | 13.48 | 0.204 | 13.17 |
+
+Six cells inside 0.4% of each other on the one number the selection uses, spanning 16x on
+intrinsic delay and 5.7x on area. Note also that `dlyc_1` and `dlyd_1` rank *above* `dlyb_1`
+here while the unexcluded run still picked `dlyb_1`, so drive resistance is not the whole
+tie-break; what is not in doubt is the observed promotion when `dlyb_*` was removed.
+
+**This result supports the cascade reading rather than undermining it.** The substitute cell
+is slower than the one it replaced, 2.284 ns against 1.229 ns, and the buffer count rose by
+1,506. A slower repair buffer buying more repair buffers is exactly what the JTAG TCK tree's
+29 levels said was happening. The prediction is that a cell an order of magnitude faster
+should move it the other way.
+
+Widened to `dly*`, which leaves `buf_1`/`clkbuf_1` as the lowest-drive buffers, and re-running
+the same stop-at-design-repair A/B.
+
+One confound to record rather than hide: this run's netlist is 91,657 instances against the
+previous 90,651, because it is the first to carry ticket 31's `L2_BANK_SIZE` fix, which widens
+`L2_AWIDTH_NOAL` from 13 to 14 bits and with it every uDMA start-address register and counter.
+The slew, fanout and capacitance violation counts moved by well under a percent, so the
+netlist change is not what moved the buffer count, but the two runs are not bit-identical
+inputs and the next comparison is against 66,240 on the identical netlist rather than against
+the original 64,734.
