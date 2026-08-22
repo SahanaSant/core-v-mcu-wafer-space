@@ -12,7 +12,7 @@ are kept as-is for the reasoning trail.
 triggered a sustained, escalating out-of-memory cascade that took down the host desktop
 session — `journalctl -k` showed the OOM killer taking out `pipewire`, `wireplumber`,
 `xdg-desktop-portal`, `dbus-broker`, and `systemd --user` itself, alongside the `klayout`
-process. Full incident narrative: `HANDOFF.md` (now likely deleted per its own instructions)
+process. Full incident narrative: `.scratch/gf180mcu-tapeout/handoff-2026-08-18.md`
 and `README.md`'s "Full-chip DRC/LVS sign-off" note. Host: 20 hardware threads (`nproc`), 15
 GiB RAM, chronically under 5 GB free at idle (`free -h` at research time: 773 MiB free, 3.2
 GiB "available", 12 GiB already used with nothing heavy running).
@@ -251,11 +251,11 @@ layers in the design," combined with "the process disappeared with no further ou
 
 **This means `workers` and `threads` may not have been the proximate cause of *this specific*
 crash at all** — a single non-parallel KLayout process, in `deep` mode, appears to have run out
-of memory before parallelism ever entered the picture. `HANDOFF.md`'s account ("3 of 162 rule
+of memory before parallelism ever entered the picture. `handoff-2026-08-18.md`'s account ("3 of 162 rule
 decks completed") does not match this log (no deck ever started per this log's evidence) —
 noted as a discrepancy between the two sources rather than resolved; this log is the more direct
 primary evidence of the two, dated this morning, but it's worth someone checking whether a
-*different*, later attempt (not recorded in `flow/runs/`) is what HANDOFF.md's "3 of 162"
+*different*, later attempt (not recorded in `flow/runs/`) is what handoff-2026-08-18.md's "3 of 162"
 figure refers to.
 
 Given that, the concrete levers, in descending order of confidence:

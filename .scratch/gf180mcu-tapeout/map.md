@@ -510,43 +510,80 @@ signed ECA covering the commit author.
   dereference in `separateMacroRegSinks` and it is **intermittent** — one pass, then forty
   failures on a byte-identical configuration — so every configuration-level fix tried for it
   was a lucky run misread. `make harden-cts` retries it; the routed run is ticket 26.
+- [26 Get the design through detailed routing](issues/26-route-the-design.md)
+  — **Routed clean, on the patched OpenROAD image — corrected from this map's own earlier,
+  wrong claim that brute-force retry carried it.** `RUN_2026-08-14_20-23-37` got past
+  `OpenROAD.CTS` and carried through to a real route: global routing at **0% overflow on every
+  metal layer**, 154,541 nets, 23.14% resource usage; detailed routing **0 DRC / 0 antenna
+  violations** per OpenROAD's own checker; IR drop negligible (26.2 µV VDD / 29.1 µV VSS, 0.00%
+  of the 3.3 V rail). The root cause is confirmed, not just hypothesised, by live coredump
+  inspection: TritonCTS's own characterisation-phase dummy loads (`clkload*`) land on real,
+  already-populated clock nets, and `separateMacroRegSinks` null-derefs when it walks one
+  expecting a live downstream net — a genuine upstream OpenROAD defect, not this design's. A
+  tested source patch and a built, validated image (`localhost/iic-osic-tools:cts-fix`,
+  `flow/openroad/`) already existed; this ticket's own Answer originally said the patch was
+  "never applied," which was stale and wrong, not verified against `flow/openroad/README.md`
+  directly. Ticket 27 paid for that mistake directly: it hit the *same* crash as a fully
+  deterministic (509/509) failure on a different checkpoint, burned ~5 hours brute-forcing it
+  before finding the already-working image sitting unused on disk. **Lesson standing for every
+  future session**: check `flow/openroad/README.md` itself before assuming the CTS crash needs
+  retrying. Two things this run also surfaced, past this ticket's own DoD, are handed off rather
+  than folded in: a first full-chip KLayout DRC pass (197 real violations, all metal3 spacing —
+  ticket 27) and post-route timing that does not close at the slow corner (worst slack ~-48 ns
+  against the 100 ns budget, ~12,500 setup violations — ticket 29). LVS still hadn't run at all
+  (ticket 28); `make precheck` hasn't run against any of this (ticket 30).
+- [27 Resolve the 197 metal3 DRC violations, and run the antenna/density decks](issues/27-metal3-drc-and-antenna-density.md)
+  — **Root-caused and fixed: the OCD SRAM macro's real GDS metal3 reaches its own edge,
+  contradicting its LEF's declared 3 µm clean margin.** Abutting macros at the LEF-implied zero
+  gap put real Metal3 from neighbouring macros 2-10 nm apart. Fixed with a real 1 µm gap between
+  macros (`flow/macros.yaml`) plus explicit `ROUTING_OBSTRUCTIONS` over those gaps
+  (`flow/config.yaml`) after the bare gap turned out to be a routing-congestion trap (global
+  routing stalled 80+ minutes vs. 90 seconds until blocked). Re-verified by a real run: full
+  KLayout DRC **0/738 rules**, density **0**, LVS clean. One residual finding, antenna (9
+  `ANT.16_i_ANT.4` violations, a tool-to-tool gap between OpenROAD's antenna repair and
+  KLayout's stricter deck, not caused by the macro/routing fix) — margin raised
+  (`DRT_ANTENNA_REPAIR_MARGIN` 10% to 25%) but **left unverified by the user's own call**:
+  three follow-up runs to re-confirm it each hit multi-hour-to-indeterminate global routing
+  (1m05s, 87 min, 159 min, 231+ min across four samples, all identical config — a real,
+  measured characteristic of this design's routing-time variance, not a hang and not shown to
+  be caused by this fix), burning most of a day chasing one minor checker item before stopping.
+  Also surfaced and fixed a bad resume path (resuming at `OpenROAD.Floorplan` deterministically
+  crashed `OpenROAD.PadRing`, unrelated to this design; avoided by resuming later in the same
+  run) and, expensively, [ticket 26](issues/26-route-the-design.md)'s stale claim about the CTS
+  patch — checking `flow/openroad/README.md` directly rather than trusting a ticket's own
+  summary of it would have saved about 5 hours.
+- [28 Run LVS (netgen) end to end](issues/28-run-lvs.md) — **Passed clean, and the CDL gap this
+  ticket was written against doesn't exist.** Netgen: circuits match uniquely, 164,340 devices
+  and 163,281 nets on both sides, zero device/net/property/pin mismatches. `PAD_CDLS ""` turned
+  out to be a red herring: LibreLane already reads the IO ring's SPICE through a **separate**
+  variable, `PAD_SPICE_MODELS`, already correctly pointed at
+  `gf180mcu_ocd_io/spice/gf180mcu_ocd_io.spice` — confirmed by the file actually being read in
+  `netgen-lvs.log` and its cells reconciled in the match. No config change was needed.
+  `MAGIC_GDS_FLATGLOB` didn't need growing either: Magic DRC and extraction both ran clean
+  against the full macro set with the template's existing list.
 
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
 trigger resolves.
 
-- **Timing closure.** Ticket 10 looked answered and was not: `make sta` ranked paths by
-  pre-layout slack rather than depth, so "25 MHz holds on logic depth at both voltages"
-  described a 35-stage path that was never the deepest. **Ticket 22 fixed the metric and
-  re-measured**: 89 stages, 62.3 ns, 125% of the 50 ns budget at 3.3 V, and a tighter `abc -D`
-  synthesis target changed nothing, so this is not slack synthesis left on the table. Ticket 23
-  re-measured again after adding the boot ROM's real RTL: 83 stages, 62.2 ns, 124% — the stage
-  count moved as ticket 22 said it would under unrelated changes, the ns floor essentially
-  didn't. **Ticket 24 re-measured a third time, against the real 100 ns budget for the first
-  time**: 86 stages, 77.4 ns, **77%** — the design closes with margin now, because the budget
-  ticket 05 settled (10 MHz, not the 20 MHz every earlier figure here was measured against)
-  finally has RTL to be measured against, not because the logic got faster; stage count and
-  floor moved again under the same RTL-churn instability ticket 22 documented (83 to 86 stages,
-  62.2 to 77.4 ns). What
-  stays in the fog is what still cannot be asked before there is a floorplan: how much hold
-  fixing the flow needs, what the clock tree costs once one exists for the 10,122-load clock
-  net, and how much of the now-positive (**77%** at 3.3 V, ticket 24) margin wire RC eats once
-  a real clock tree exists to measure against. Graduates from the first full harden.
-  **Ticket 25 answered the first of those three and made the second harder to reach.** How much
-  buffering the flow needs is measured now, and it is a lot: `RepairDesignPostGPL` inserts
-  **61,069 buffers** into 9,724 nets and grows standard-cell area by two thirds, 2,667,750 to
-  **4,476,590 um2**, before clock tree synthesis even starts. That is what the unbuffered
-  high-fanout nets cost, and every area figure in this map before ticket 25 excluded it. What
-  the clock tree itself costs is still open and now blocked behind an intermittent CTS crash
-  (ticket 26). Ticket 16 made one part
-  concrete: the clock net has **54 real clock gates in it** rather than transparent black
-  boxes, so they are 54 points CTS has to balance to rather than an abstraction. Ticket 19 made
-  a second: the SRAM arcs are now real in `make sta`, 13.46 to 15.87 ns at `ss_125C_3v00`, but
-  that is the foundry macro's timing under an OCD cell name. Ticket 20 justified rather than
-  replaced it: local characterisation isn't reachable, so this pessimistic placeholder is now
-  the deliberate sign-off basis rather than a stopgap, revisited only if the ORConf silicon
-  characterisation talk in September supplies something better.
+- **Global routing has real, unexplained run-to-run time variance on this design.** Ticket
+  27's antenna re-verification attempts measured `OpenROAD.GlobalRouting` taking anywhere from
+  1m05s to 4+ hours across four independently-placed samples, identical config each time,
+  memory stable throughout (not a hang). Not yet isolated to a cause — the map's own hypothesis
+  that it's placement-instance-dependent congestion (this design's well-documented
+  extreme-fanout nets) is plausible but unconfirmed, and "does the routing-obstruction fix
+  itself make some placements worse" was raised and not ruled out either. Worth a real
+  investigation if it keeps costing multi-hour waits on future runs; not chased further under
+  ticket 27 since the DRC/density/LVS results that were the actual point already came back
+  clean from a fast sample.
+- **Ticket 27's antenna-margin fix (`DRT_ANTENNA_REPAIR_MARGIN` 10%→25%) is applied but
+  unverified.** The 9 `ANT.16_i_ANT.4` violations it targets were confirmed real from one
+  complete run; whether the raised margin actually clears them to 0 was never confirmed by a
+  second complete run, abandoned after three attempts each cost hours to the routing-time
+  variance above. Graduates whenever a future run reaches the antenna deck again with this
+  config — read the result off `metrics.json`'s `klayout__antenna_error__count` rather than
+  re-deriving it.
 - **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
   but the harness cannot be written before the netlist exists. Graduates from the
   technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
@@ -567,15 +604,6 @@ trigger resolves.
   this harness boots is one more test image loaded exactly the way ticket 23's `sw/bootrom` loads
   any other, not a special case. Whether it needs its own `sw/app` directory or lives alongside
   the harness's other three tests is undecided and stays in this patch.
-- **DRC, LVS and antenna.** In particular the `MAGIC_GDS_FLATGLOB` patterns each new macro
-  needs, which are discovered by running into false errors. Graduates from a first full
-  harden. **Ticket 18 confirmed this is live, not conditional**: the ring is `gf180mcu_ocd_io`,
-  whose LibreLane config sets `PAD_CDLS ""` where `gf180mcu_fd_io` inherits real CDL, so the
-  ring has no CDL netlist for LVS as shipped. The SPICE is a proper hierarchical netlist rather
-  than a stub, so the data exists and the config is what needs pointing at it. There is a pad
-  ring now (ticket 25) but still nothing to run LVS on, since the run stops at CTS; this
-  graduates from ticket 26's routed run, which is also where the `MAGIC_GDS_FLATGLOB` patterns
-  get discovered. `flow/config.yaml` carries the template's list unchanged in the meantime.
 - **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
   fallback is if it is not. Ticket 10 set the stakes at 97% occupancy; ticket 19's parameter set
   brought that to 95.6%. **Ticket 12 changed the picture more than either did**: cutting
@@ -601,7 +629,60 @@ trigger resolves.
   place.** The design places at 35% with headroom, so area is no longer the question. The
   question is now the flow itself: `OpenROAD.CTS` crashes on this design about twenty-four
   times in twenty-five and has to be retried, which makes every iteration through routing
-  expensive and unpredictable in a way nothing before this priced. Ticket 26 owns it.
+  expensive and unpredictable in a way nothing before this priced. **Ticket 26 confirmed the
+  crash is a genuine upstream OpenROAD defect (root-caused via live coredump, not just
+  hypothesised) and routed clean on the retry**: 0% global-route overflow, 0 DRC/antenna
+  violations from OpenROAD's own checker, negligible IR drop. Retrying costs time (~1-in-100
+  passes CTS) but is no longer a schedule unknown, it's a known, bounded tax. What replaces it
+  as the open schedule risk is what that same run surfaced past routing itself: 197 real
+  metal3 DRC violations from the first full-chip KLayout signoff pass (ticket 27), LVS never
+  having run at all (ticket 28), and post-route timing that does not close at the slow corner,
+  worst slack around -48 ns against the 100 ns budget and ~12,500 setup violations, a real gap
+  from the 77% idealized margin ticket 24 measured pre-layout (ticket 29). **Two of the three
+  turned out to be configuration fixes, not deeper design changes.** Ticket 27's metal3
+  violations were a floorplan/routing-obstruction fix, re-verified clean (0/738 DRC rules,
+  0 density) with one small residual (9 antenna violations, fix applied, re-verifying). Ticket
+  28's LVS passed clean on the first real run with no fix needed at all — the CDL gap it was
+  written to close didn't exist. What remains is ticket 29, the real unknown: whether the
+  post-route timing gap is closable by configuration or needs microarchitecture change is still
+  open.
+
+- **The detailed-routing plateau looks structural to the RTL's fanout, not to flow
+  configuration.** Ticket 29 ruled out the cheap levers (`DRT_OPT_ITERS` is not a safe cap the
+  way `GRT_OVERFLOW_ITERS` was, and `MAX_FANOUT_CONSTRAINT` correctly defaults to 10 for this
+  PDK) and root-caused the congestion with real evidence rather than "large designs are slow":
+  global placement density is only 26.6%, well under even this repo's conservative 35% target,
+  so this is localized congestion rather than whole-chip overpacking. The most plausible source
+  is where `RepairDesignPostGPL`'s 64,734 emergency buffers (28% of the design's ~231K final
+  instances) and the 73 `delaynet_*_clk_PAD` hold-fix NDR nets cluster, which points at the
+  RTL's own broadcast/control fanout. A real fix would be RTL-level (buffering or pipelining
+  broadcast signals, or a less-flattened synthesis), which is a different kind of change from
+  anything this map has made so far and is not sharp enough to ticket yet. Graduates if the
+  plateau keeps costing multi-hour routes: the 2026-08-20 resume opened with 512,491 violations
+  on iteration 0, bit-identical to the run before it, so it is not going away on its own.
+  **Graduated 2026-08-21 into [Reduce broadcast fanout so detailed routing can
+  converge](issues/32-reduce-fanout-for-routability.md)**, after the resumed route got past
+  iteration 11 and showed the step cannot finish: see ticket 29 for the two curves.
+
+- **Whether boot should stay ROM-resident at all.** Raised 2026-08-21 after ticket 31 found
+  the boot ROM never issues a single SPI transaction in 100 ms and, separately, that nothing in
+  it can be tested without re-hardening, because `gen_bootrom.py` compiles the image into a case
+  statement that synthesis turns into gates. The suggestion on the table is to reverse ticket
+  04 and drop the ROM, booting from L2 filled over JTAG instead. Two things are already clear.
+  It cannot unblock anything now: removing the ROM is a design change, and every design change
+  reaches simulation only through a re-harden, which is exactly what
+  [the fanout ticket](issues/32-reduce-fanout-for-routability.md) is blocking. And it would be
+  a real testability win later, because the L2 SRAM macros keep their hierarchy through
+  synthesis (ticket 31's log prints full paths into them), so software living in L2 can be
+  backdoor-loaded into an *existing* netlist, while software living in the ROM can never be.
+  Against that it costs autonomous boot, making JTAG a single point of failure on silicon, and
+  it hides rather than answers whether the uDMA/QSPI path works at all. Boot ROM area is not a
+  factor either way: as a mux tree it is on the order of 1-2% of the design's 232,528 instances,
+  so it is not where the 64,734 emergency buffers come from. Not sharp enough to ticket while
+  the qspim failure is still undiagnosed, since the diagnosis decides whether SPI boot is even
+  available. Worth noting the middle option nobody has costed yet: keep the ROM but have it
+  check a strap pin and either SPI-boot or park for JTAG, which keeps autonomous boot and makes
+  most boot software testable.
 
 ## Out of scope
 
