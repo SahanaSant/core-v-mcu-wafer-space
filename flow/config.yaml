@@ -276,82 +276,63 @@ DRT_SAVE_SNAPSHOTS: true
 # macros is a routing-congestion trap: global routing "sees" it as available
 # capacity and repeatedly tries to thread nets through it, which measured as an
 # 80+ minute stall on a step that normally takes about 90 seconds (before the
-# fix, the same gap did not exist, so this trap did not either). Blocking every
-# routing layer over the 14 gaps (7 columns x 2 rows) makes routing treat them
-# exactly as it did when the macros were abutted -- fully non-routable -- while
-# the physical air gap that satisfies the DRC rule stays untouched, since this
-# only blocks new routed metal, not the macros' own fixed geometry.
+# fix, the same gap did not exist, so this trap did not either).
+#
+# Blocking the gaps over the 14 rectangles (7 columns x 2 rows) makes routing
+# treat them as it did when the macros were abutted, while the physical air gap
+# that satisfies the DRC rule stays untouched, since this only blocks new routed
+# metal, not the macros' own fixed geometry.
+#
+# Metal1 to Metal3 only, not all five (ticket 32). The macro carries no Metal4
+# or Metal5 at all, in LEF or GDS, so those two layers have no neighbouring
+# geometry to be spaced against and are already routed freely straight over the
+# macro body. Blocking them over the gap as well was over-caution, and it cost
+# real violations: the first converging route finished with 107 shorts, every
+# one a net against these obstructions, 80 on Metal4 and 27 on Metal5, none on
+# any other layer.
 ROUTING_OBSTRUCTIONS:
   - ["Metal1", 1061.3, 502.0, 1062.3, 1017.81]
   - ["Metal2", 1061.3, 502.0, 1062.3, 1017.81]
   - ["Metal3", 1061.3, 502.0, 1062.3, 1017.81]
-  - ["Metal4", 1061.3, 502.0, 1062.3, 1017.81]
-  - ["Metal5", 1061.3, 502.0, 1062.3, 1017.81]
   - ["Metal1", 1363.6, 502.0, 1364.6, 1017.81]
   - ["Metal2", 1363.6, 502.0, 1364.6, 1017.81]
   - ["Metal3", 1363.6, 502.0, 1364.6, 1017.81]
-  - ["Metal4", 1363.6, 502.0, 1364.6, 1017.81]
-  - ["Metal5", 1363.6, 502.0, 1364.6, 1017.81]
   - ["Metal1", 1665.9, 502.0, 1666.9, 1017.81]
   - ["Metal2", 1665.9, 502.0, 1666.9, 1017.81]
   - ["Metal3", 1665.9, 502.0, 1666.9, 1017.81]
-  - ["Metal4", 1665.9, 502.0, 1666.9, 1017.81]
-  - ["Metal5", 1665.9, 502.0, 1666.9, 1017.81]
   - ["Metal1", 1968.2, 502.0, 1969.2, 1017.81]
   - ["Metal2", 1968.2, 502.0, 1969.2, 1017.81]
   - ["Metal3", 1968.2, 502.0, 1969.2, 1017.81]
-  - ["Metal4", 1968.2, 502.0, 1969.2, 1017.81]
-  - ["Metal5", 1968.2, 502.0, 1969.2, 1017.81]
   - ["Metal1", 2270.5, 502.0, 2271.5, 1017.81]
   - ["Metal2", 2270.5, 502.0, 2271.5, 1017.81]
   - ["Metal3", 2270.5, 502.0, 2271.5, 1017.81]
-  - ["Metal4", 2270.5, 502.0, 2271.5, 1017.81]
-  - ["Metal5", 2270.5, 502.0, 2271.5, 1017.81]
   - ["Metal1", 2572.8, 502.0, 2573.8, 1017.81]
   - ["Metal2", 2572.8, 502.0, 2573.8, 1017.81]
   - ["Metal3", 2572.8, 502.0, 2573.8, 1017.81]
-  - ["Metal4", 2572.8, 502.0, 2573.8, 1017.81]
-  - ["Metal5", 2572.8, 502.0, 2573.8, 1017.81]
   - ["Metal1", 2875.1, 502.0, 2876.1, 1017.81]
   - ["Metal2", 2875.1, 502.0, 2876.1, 1017.81]
   - ["Metal3", 2875.1, 502.0, 2876.1, 1017.81]
-  - ["Metal4", 2875.1, 502.0, 2876.1, 1017.81]
-  - ["Metal5", 2875.1, 502.0, 2876.1, 1017.81]
   - ["Metal1", 1061.3, 1118.0, 1062.3, 1633.81]
   - ["Metal2", 1061.3, 1118.0, 1062.3, 1633.81]
   - ["Metal3", 1061.3, 1118.0, 1062.3, 1633.81]
-  - ["Metal4", 1061.3, 1118.0, 1062.3, 1633.81]
-  - ["Metal5", 1061.3, 1118.0, 1062.3, 1633.81]
   - ["Metal1", 1363.6, 1118.0, 1364.6, 1633.81]
   - ["Metal2", 1363.6, 1118.0, 1364.6, 1633.81]
   - ["Metal3", 1363.6, 1118.0, 1364.6, 1633.81]
-  - ["Metal4", 1363.6, 1118.0, 1364.6, 1633.81]
-  - ["Metal5", 1363.6, 1118.0, 1364.6, 1633.81]
   - ["Metal1", 1665.9, 1118.0, 1666.9, 1633.81]
   - ["Metal2", 1665.9, 1118.0, 1666.9, 1633.81]
   - ["Metal3", 1665.9, 1118.0, 1666.9, 1633.81]
-  - ["Metal4", 1665.9, 1118.0, 1666.9, 1633.81]
-  - ["Metal5", 1665.9, 1118.0, 1666.9, 1633.81]
   - ["Metal1", 1968.2, 1118.0, 1969.2, 1633.81]
   - ["Metal2", 1968.2, 1118.0, 1969.2, 1633.81]
   - ["Metal3", 1968.2, 1118.0, 1969.2, 1633.81]
-  - ["Metal4", 1968.2, 1118.0, 1969.2, 1633.81]
-  - ["Metal5", 1968.2, 1118.0, 1969.2, 1633.81]
   - ["Metal1", 2270.5, 1118.0, 2271.5, 1633.81]
   - ["Metal2", 2270.5, 1118.0, 2271.5, 1633.81]
   - ["Metal3", 2270.5, 1118.0, 2271.5, 1633.81]
-  - ["Metal4", 2270.5, 1118.0, 2271.5, 1633.81]
-  - ["Metal5", 2270.5, 1118.0, 2271.5, 1633.81]
   - ["Metal1", 2572.8, 1118.0, 2573.8, 1633.81]
   - ["Metal2", 2572.8, 1118.0, 2573.8, 1633.81]
   - ["Metal3", 2572.8, 1118.0, 2573.8, 1633.81]
-  - ["Metal4", 2572.8, 1118.0, 2573.8, 1633.81]
-  - ["Metal5", 2572.8, 1118.0, 2573.8, 1633.81]
   - ["Metal1", 2875.1, 1118.0, 2876.1, 1633.81]
   - ["Metal2", 2875.1, 1118.0, 2876.1, 1633.81]
   - ["Metal3", 2875.1, 1118.0, 2876.1, 1633.81]
-  - ["Metal4", 2875.1, 1118.0, 2876.1, 1633.81]
-  - ["Metal5", 2875.1, 1118.0, 2876.1, 1633.81]
 
 # --- PDN --------------------------------------------------------------------
 

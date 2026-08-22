@@ -44,6 +44,40 @@ if { $::env(CLOCK_PORT) == $::env(CLOCK_NET) } {
 puts "\[INFO] Using clock $clock_port…"
 create_clock {*}$port_args -name $clock_port -period $::env(CLOCK_PERIOD)
 
+# --- The JTAG clock ---------------------------------------------------------
+#
+# Declared as of ticket 32, and the note below on the two missing clocks is
+# kept because its reasoning is still what governs the one that is *still*
+# missing. What changed is the price, which turned out to be much higher than
+# that note assumed, and the risk, which ticket 26's patched OpenROAD removed.
+#
+# The price, measured on RUN_2026-08-22_17-27-47 by charging every buffer
+# design repair inserted back to the pad net it descends from:
+#
+#   clk_pad     5780 loads      0 buffers    has a create_clock
+#   inputs[0]    258 loads   3377 buffers    does not
+#
+# The clock pad drives twenty-two times the loads and takes no repair buffers
+# at all, because repair_design leaves clock nets to CTS. The JTAG pad is
+# repaired as data instead, and 3377 buffers is 7% of every buffer in the
+# design, spent reaching a twenty-second of the loads. That is the concrete
+# form of what the note below calls "still buffered by repair_design as
+# ordinary high-fanout nets".
+#
+# set_clock_groups is required alongside it: the two domains are genuinely
+# asynchronous and everything crossing between them goes through the debug
+# module's own CDC synchronisers, so without this the tool would time paths
+# that have no meaning and repair_timing would chase them.
+set jtag_tck_pin [get_pins -quiet {inputs\[0\].pad/Y}]
+if { [llength $jtag_tck_pin] } {
+    create_clock $jtag_tck_pin -name jtag_tck -period $::env(CLOCK_PERIOD)
+    set_clock_groups -asynchronous -group [get_clocks $clock_port] \
+        -group [get_clocks jtag_tck]
+    puts "\[INFO] Declared jtag_tck on inputs\[0\].pad/Y, asynchronous to $clock_port"
+} else {
+    puts "\[WARNING] inputs\[0\].pad/Y not found; jtag_tck left unconstrained"
+}
+
 # --- One clock, and not because one is enough -------------------------------
 #
 # This design has three clock domains and only one of them is constrained here,
