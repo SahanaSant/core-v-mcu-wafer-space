@@ -1,7 +1,7 @@
 # Reduce broadcast fanout so detailed routing can converge
 
 Type: grilling
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## Question
@@ -49,6 +49,64 @@ What to settle here:
 
 Deliberately not in scope here: post-route timing closure itself. That is ticket 29, which
 cannot proceed until a route completes, and is now blocked on this.
+
+## Answer
+
+**Detailed routing completes in 3 minutes 34 seconds with 0 violations** (`RUN_2026-08-22_21-28-35`,
+patched OpenROAD image, `-or_seed 42`). The step that this ticket was written because it could
+not finish now finishes clean. Global routing takes 34 seconds.
+
+| | before | after |
+| --- | --- | --- |
+| design repair buffers | 64,734 | 44,185 |
+| total wirelength | 20,850,118 um | 13,570,032 um |
+| global routing | 3 passes, stalling | 1 pass, 34 s |
+| detailed routing iteration 0 | 512,491 violations | 47 |
+| detailed routing result | never finished, OOM-killed at 13 h with 312,860 left | **0 violations, 3 m 34 s** |
+
+**No RTL changed.** Four lines of flow configuration did it:
+
+1. `MAX_FANOUT_CONSTRAINT` 10 to 40. The load-bearing one. At 10 the repair degenerates: the
+   JTAG TCK domain's 258 loads were reached through 3,377 buffers whose mean fanout is 1.1,
+   thirteen to eighteen deep, and the netlist it produced carried fanout 24 to 29 anyway, so
+   the design paid 17,002 buffers for a limit the result did not meet. 40 cuts violating nets
+   from 2,058 to 400 and leaves `MAX_TRANSITION` and `MAX_CAPACITANCE`, which measure something
+   physical and whose repair builds real trees, to constrain the genuinely wide nets.
+2. `create_clock` on `jtag_tck`, with `set_clock_groups -asynchronous`. Charging buffers to the
+   pad net they descend from made this unarguable: `clk_pad` drives 5,780 loads for **0**
+   repair buffers because it has a clock declaration, `inputs[0].pad` drives 258 for **3,377**
+   because it did not. Declaring it removed 3,293, within 3% of the prediction.
+3. `ROUTING_OBSTRUCTIONS` narrowed from Metal1-5 to Metal1-3. The first converging route
+   finished with 107 shorts and every one was a net against this repo's own obstructions, 80 on
+   Metal4 and 27 on Metal5. The OCD SRAM macro has no Metal4 or Metal5 geometry in LEF or GDS,
+   so those layers have nothing to be spaced against and were already routed straight over the
+   macro body; blocking them over a 1 um gap was over-caution that cost real violations.
+4. `EXTRA_EXCLUDED_CELLS: dly*`. Neutral on routability and kept anyway: at identical buffer
+   count it swaps a 54.88-area, 2.284 ns delay cell for a 13.17-area, 0.210 ns buffer across
+   17,002 instances, because OpenROAD's fanout repair takes the library's lowest-drive buffer
+   and this library puts all four delay families at or above `buf_1` on that number.
+
+**This ticket's premise was wrong and the correction is the point.** The title says "reduce
+broadcast fanout"; the Question argues from 64,734 emergency buffers and 26.6% placement
+density that the congestion is structural to the RTL's broadcast and control fanout, fixable
+only in RTL. The SoC reset still drives about 8,500 sinks in two polarities and always did.
+The buffers and the density were measured correctly; the inference from them to "the RTL is at
+fault" is what failed, and it blocked ticket 29 and everything behind it for two days.
+
+Three hypotheses died on the way here, each killed by a measurement rather than by argument:
+that the delay cell caused a slew cascade (three different cells, three identical 17,002-buffer
+structures), that the RTL's fanout was structural (no RTL changed), and that the pad drove the
+nets too weakly (the `in_c` pad's own Liberty makes it eleven times stronger than `buf_1`).
+
+The generalisable lesson: **the buffers a resizer inserts are evidence about the resizer's
+constraints first and about the netlist second.** `flow/synth/buffer_report.py` is the tool
+that made the difference, charging each inserted instance back to the net it descends from;
+without per-net attribution the 64,734 buffers looked like a design problem.
+
+Not done here, and not needed: `ref_clk_div40` stays undeclared, since the same measurement
+shows it costing nothing worth another clock tree, and the RTL reset distribution stays as it
+is. If a future change makes routing tight again, the reset is where to look, but it is not
+what was wrong.
 
 ## Notes
 

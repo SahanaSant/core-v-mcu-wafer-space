@@ -562,6 +562,22 @@ signed ECA covering the commit author.
   `MAGIC_GDS_FLATGLOB` didn't need growing either: Magic DRC and extraction both ran clean
   against the full macro set with the template's existing list.
 
+- [Reduce broadcast fanout so detailed routing can converge](issues/32-reduce-fanout-for-routability.md)
+  — detailed routing now completes in 3m34s with **0 violations**, against a step that
+  previously could not finish at all (OOM-killed 13 hours in, 312,860 violations outstanding).
+  Wirelength 20,850,118 to 13,570,032 um, global routing 3 stalling passes to one 34-second
+  pass, iteration-0 violations 512,491 to 47. **No RTL changed**, and the ticket's own premise,
+  that the plateau was structural to the RTL's broadcast fanout, was wrong. Four lines of flow
+  configuration: `MAX_FANOUT_CONSTRAINT` 10 to 40 (its repair degenerates into single-load
+  chains averaging 1.1 fanout, and the netlist did not meet the limit anyway), a `create_clock`
+  on `jtag_tck` (the pad table is unarguable: `clk_pad` 5,780 loads and 0 repair buffers with a
+  clock declared, `inputs[0].pad` 258 loads and 3,377 without), `ROUTING_OBSTRUCTIONS` narrowed
+  to Metal1-3 (the macro has no Metal4/Metal5 at all, and blocking them caused the last 107
+  shorts), and `dly*` excluded from the resizer. The lesson worth carrying: **the buffers a
+  resizer inserts are evidence about the resizer's constraints first and about the netlist
+  second**, and `flow/synth/buffer_report.py` is what made that visible by charging every
+  inserted instance back to the net it descends from.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
