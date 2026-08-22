@@ -188,3 +188,66 @@ The slew, fanout and capacitance violation counts moved by well under a percent,
 netlist change is not what moved the buffer count, but the two runs are not bit-identical
 inputs and the next comparison is against 66,240 on the identical netlist rather than against
 the original 64,734.
+
+### 2026-08-22: the cell was never the problem. Fanout repair is degenerate
+
+`RUN_2026-08-22_16-12-09`, `EXTRA_EXCLUDED_CELLS: [dly*]`, same stop point:
+
+```
+[INFO RSZ-0034] Found 18051 slew violations.
+[INFO RSZ-0035] Found 2040 fanout violations.
+[INFO RSZ-0038] Inserted 66377 buffers in 10022 nets.
+```
+
+`buf_1` is now the fanout cell, as intended. The count did not move: 66,377 against 66,240,
+and the `fanout*` instance count is **17,002 in both runs**, exactly. The JTAG TCK tree is
+3,377 buffers with `buf_1` and was 3,377 with `dlyc_1`. Three different cells, three identical
+structures. **The cascade hypothesis is dead**: cell speed sets area and delay, not tree size.
+
+Tracing one path from the pad net to its deepest sink shows what fanout repair is actually
+building. Fanout in brackets:
+
+```
+[   4]  (pad net)     i_dmi_jtag.i_dmi_cdc.i_cdc_req.i_src.clk_i
+[   9]  buf_8         wire66377
+[  29]  buf_8         max_cap66375
+[   8]  buf_8         max_cap66374
+[  24]  buf_8         max_cap66373
+[  24]  buf_8         max_cap66372
+[  24]  clkbuf_8      max_cap66371
+[   1]  buf_1         fanout66319
+[   1]  buf_1         fanout65898
+...  eighteen more, every one of them fanout 1 ...
+[   1]  buf_1         fanout64277
+```
+
+Across the 3,378 nets in that tree the **mean fanout is 1.1** and the deepest sink sits 24 nets
+from the root. This is not a fanout tree. It is 258 private chains of single-load buffers,
+thirteen to eighteen deep, hanging off one strongly driven pad net (the `in_c` pad's own
+Liberty gives it 1.19 ns/pF, eleven times stronger than `buf_1`, so a weak source is not the
+explanation either).
+
+**And the constraint is not even met.** The `max_cap*` buffers higher up the same path carry
+fanout 24 to 29 against a limit of 10. So the design pays 17,002 buffers for a limit the
+result does not respect.
+
+That reframes the ticket a third time. The lever is the constraint itself, not the cell and
+not the RTL:
+
+| `MAX_FANOUT_CONSTRAINT` | violating nets | excess loads |
+| --- | --- | --- |
+| 10 (PDK default) | 2,058 | 70,656 |
+| 20 | 1,181 | 54,896 |
+| 40 | 413 | 38,483 |
+| 64 | 148 | 30,545 |
+| 100 | 59 | 27,662 |
+
+Set to 40, an 80% cut in violating nets, leaving `MAX_TRANSITION` and `MAX_CAPACITANCE` to
+constrain the genuinely wide nets. Those two matter physically where a fanout count does not,
+and their repair demonstrably works: the `wire*` and `load_slew*` buffers build real trees at
+fanout 8 to 29 rather than chains.
+
+Keeping the `dly*` exclusion regardless. It does not change the buffer count, but at identical
+count it swaps a 54.88-area, 2.284 ns cell for a 13.17-area, 0.210 ns one across 17,002
+instances, which is real area and real delay off the critical paths whatever happens to
+routability.

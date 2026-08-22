@@ -196,6 +196,25 @@ GRT_ALLOW_CONGESTION: true
 EXTRA_EXCLUDED_CELLS:
   - "gf180mcu_fd_sc_mcu7t5v0__dly*"
 
+# Ticket 32: relax the fanout constraint, because its repair is degenerate on
+# this design and the constraint is not being met anyway.
+#
+# At the PDK default of 10, RepairDesignPostGPL spends 17,002 buffers on 2,058
+# violating nets, and tracing one shows why that number is so large: the JTAG
+# TCK domain's 258 loads are reached through 3,377 buffers whose mean fanout is
+# **1.1**. It is not building a tree. It is building 258 private chains of
+# single-load buffers, thirteen to eighteen deep, from one strongly-driven pad
+# net. Swapping the buffer cell three ways (dlyb_1, dlyc_1, buf_1) left that
+# count at 17,002 every time, so the shape comes from the repair, not the cell.
+#
+# The constraint does not survive the flow either: the same netlist ends with
+# max_cap repair buffers carrying fanout 24 to 29, well past 10.
+#
+# 40 cuts violating nets to 413 while leaving the physically meaningful limits,
+# MAX_TRANSITION and MAX_CAPACITANCE above, to do the real work on the genuinely
+# wide nets. Those two have working repair: they build real trees.
+MAX_FANOUT_CONSTRAINT: 40
+
 # Ticket 29: global routing's "extra iterations to remove overflow" loop
 # (LibreLane default 50) restarts from iteration 1 every time it disables NDR
 # on a congested net. This design has 73 delaynet_*_clk_PAD nets (hold-fix

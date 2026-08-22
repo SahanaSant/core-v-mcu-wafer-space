@@ -52,7 +52,7 @@ static void __attribute__((noreturn)) halt(void)
 void __attribute__((noreturn)) boot_main(void)
 {
 	volatile boot_header_t const *header = (boot_header_t const *)(uintptr_t)L2_IMAGE_BASE;
-	uint32_t size, crc32;
+	uint32_t size, crc32, read_size;
 
 	udma_qspim_open(0, BOOT_SPI_CLK_HZ);
 	udma_flash_reset_enable(0, 0);
@@ -62,13 +62,28 @@ void __attribute__((noreturn)) boot_main(void)
 	size = header->size;
 	crc32 = header->crc32;
 
+	/* Ticket 31: round the transfer up to a whole number of 32-bit words.
+	 * The receive channel runs at 32-bit datasize and udma_spim_txrx only
+	 * hands a word to the DMA once it has assembled four bytes, so a length
+	 * that is not a multiple of four leaves a tail of one to three bytes
+	 * sitting in the shift register. The channel's byte counter then never
+	 * reaches zero and udma_flash_read()'s wait spins forever, with nothing
+	 * on any pad to say why. Reading the extra bytes costs a few microseconds
+	 * and turns that silent hang into an ordinary CRC mismatch, since the CRC
+	 * below still covers exactly the size the header declared.
+	 *
+	 * The range check comes first so the round-up cannot wrap, and
+	 * L2_IMAGE_MAX_SIZE is itself a multiple of four, so a length that
+	 * passed the check still fits the window after rounding. */
 	if (size == 0 || size > L2_IMAGE_MAX_SIZE) {
 		halt();
 	}
 
+	read_size = (size + 3u) & ~3u;
+
 	/* Overwrites the header just read at the same address with the real
 	 * image; size and crc32 above are already copied out to locals. */
-	udma_flash_read(BOOT_IMAGE_FLASH_OFFSET, L2_IMAGE_BASE, (uint16_t)size);
+	udma_flash_read(BOOT_IMAGE_FLASH_OFFSET, L2_IMAGE_BASE, (uint16_t)read_size);
 
 	if (crcSlow((unsigned char const *)(uintptr_t)L2_IMAGE_BASE, (int)size) != crc32) {
 		halt();

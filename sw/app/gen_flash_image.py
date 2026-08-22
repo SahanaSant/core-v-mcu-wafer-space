@@ -47,10 +47,13 @@ def main():
     # the DMA once it has assembled four bytes. A tail of one to three bytes is
     # received off the wire, sits in the shift register and is never delivered,
     # so the channel's byte counter stops short of zero and udma_flash_read's
-    # `while (rx_size != 0)` never exits. The boot ROM cannot defend against
-    # this itself, because it is compiled into the netlist's ROM, so the image
-    # has to arrive word-aligned. Padding before the CRC keeps the two in step:
-    # the header's size and the ROM's crcSlow() both cover the padded image.
+    # `while (rx_size != 0)` never exits.
+    #
+    # sw/bootrom/main.c now rounds its own transfer up, so this is no longer
+    # the only thing standing between a mis-sized image and a silent hang. It
+    # stays because that guard only reaches silicon through a re-hardened ROM,
+    # and because padding before the CRC keeps the two in step: the header's
+    # size and the ROM's crcSlow() both cover the padded image.
     pad = (-len(image)) % 4
     if pad:
         image += b"\x00" * pad
