@@ -25,8 +25,8 @@
  * One real fix: udma_qspim_open()'s clock divisor assumed a fixed 5 MHz
  * peripheral clock, which was that board's FLL-derived udma_ctrl clock.
  * Ticket 05 settled this design's clock architecture as ref_clk_i bypassed
- * undivided to periph_clk at 10 MHz, so the divisor is now derived from that
- * real number rather than carried over. See PERIPH_CLK_HZ below.
+ * undivided to periph_clk, so the divisor is now derived from that real
+ * number rather than carried over. See PERIPH_CLK_HZ below.
  */
 
 #include <stdint.h>
@@ -36,8 +36,11 @@
 #include "udma_qspi_reg_defs.h"
 #include "udma_qspi_driver.h"
 
-/* Ticket 05: soc_clk_o/periph_clk_o/cluster_clk_o are ref_clk_i, undivided. */
-#define PERIPH_CLK_HZ 10000000u
+/* Ticket 05: soc_clk_o/periph_clk_o/cluster_clk_o are ref_clk_i, undivided.
+ * Ticket 29 revised the external ref_clk_i target from 10 MHz to 6 MHz to
+ * match the real post-route critical path; keep this in step with
+ * flow/config.yaml's CLOCK_PERIOD if it changes again. */
+#define PERIPH_CLK_HZ 6000000u
 
 /* udma_clk_div_cnt.sv toggles clk_o every `target` periph_clk cycles, so the
  * output period is 2*target periph_clk cycles: spi_clk = periph_clk / (2*N).

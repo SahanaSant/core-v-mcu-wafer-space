@@ -35,10 +35,21 @@ if [ "$#" -eq 0 ]; then
     set -- bash
 fi
 
+# Cap container memory so an OOM inside a tool (KLayout DRC has hit this) gets
+# contained to the container's cgroup instead of the host OOM killer picking
+# off arbitrary host session processes (this took out pipewire/systemd --user
+# once — see flow/klayout-drc-memory-research.md). Override or blank out
+# either var to disable the cap.
+MEMORY_LIMIT="${MEMORY_LIMIT:-12g}"
+MEMORY_SWAP_LIMIT="${MEMORY_SWAP_LIMIT:-14g}"
+MEMFLAGS=""
+[ -n "$MEMORY_LIMIT" ] && MEMFLAGS="$MEMFLAGS --memory=$MEMORY_LIMIT"
+[ -n "$MEMORY_SWAP_LIMIT" ] && MEMFLAGS="$MEMFLAGS --memory-swap=$MEMORY_SWAP_LIMIT"
+
 # The image entrypoint starts VNC or X11 unless --skip comes first, in which
 # case it just execs the command.
 # shellcheck disable=SC2086
-exec "$ENGINE" run --rm $TTY $USERFLAG \
+exec "$ENGINE" run --rm $TTY $USERFLAG $MEMFLAGS \
     -v "$ROOT:/foss/designs:z" \
     -w /foss/designs \
     -e PDK_ROOT=/foss/designs/pdk \
@@ -50,5 +61,6 @@ exec "$ENGINE" run --rm $TTY $USERFLAG \
     -e TOP="${TOP:-core_v_mcu}" \
     -e MODE="${MODE:-both}" \
     -e LIB_CORNER="${LIB_CORNER:-ss_125C_3v00}" \
-    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-100}" \
+    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-166.67}" \
+    -e TIMEOUT_NS="${TIMEOUT_NS:-}" \
     "$IMAGE" --skip "$@"

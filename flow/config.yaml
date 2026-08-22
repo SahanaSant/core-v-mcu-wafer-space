@@ -127,12 +127,30 @@ DEFAULT_CORNER: nom_tt_025C_3v30
 
 # --- Clock ------------------------------------------------------------------
 #
-# 100 ns is ticket 05's settled 10 MHz. The clock is defined on the pad cell's
-# core-side output rather than the bond pad. The JTAG clock and the /40 divided
-# clock are declared in flow/chip_top.sdc, which this cannot express.
+# 166.67 ns / 6 MHz, revised by ticket 29 from ticket 05's original 100 ns /
+# 10 MHz. Ticket 26's routed design measured a real critical path (the
+# CV32E40P decoder's instruction-word fanout) of about 128.6 ns at the slow
+# corner, 29% over the 100 ns budget, and OpenROAD's own resizer could not
+# repair that with buffering alone ([RSZ-0062] against every one of its
+# 6,274 violating endpoints). 166.67 ns puts the real critical path back at
+# about 77% utilisation, the same target ticket 24 aimed for pre-layout, and
+# it is a standard, easily-sourced crystal frequency, same reasoning ticket 05
+# used to land on 10 MHz. The clock is external and was never burned into
+# silicon, so this is a budget correction, not a defeat.
+#
+# This also fixes most of the runtime this design's resizer steps were
+# burning: RepairDesignPostGPL and ResizerTimingPostCTS were each spending
+# tens of minutes (and inserting ~65,000 buffers) chasing an unreachable 100 ns
+# target on every single endpoint before giving up anyway. See ticket 29 for
+# the measured before/after.
+#
+# sw/bootrom/spi.c's PERIPH_CLK_HZ tracks this and needs updating together if
+# it changes again. The clock is defined on the pad cell's core-side output
+# rather than the bond pad. The JTAG clock and the /40 divided clock are
+# declared in flow/chip_top.sdc, which this cannot express.
 CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
-CLOCK_PERIOD: 100
+CLOCK_PERIOD: 166.67
 
 # --- Placement and routing --------------------------------------------------
 
@@ -149,6 +167,22 @@ GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 PL_TARGET_DENSITY_PCT: 35
 GRT_ALLOW_CONGESTION: true
 
+# Ticket 29: global routing's "extra iterations to remove overflow" loop
+# (LibreLane default 50) restarts from iteration 1 every time it disables NDR
+# on a congested net. This design has 73 delaynet_*_clk_PAD nets (hold-fix
+# delay-matching buffers on the clock net) that can each trigger a restart, and
+# a live 6 MHz run stalled 6+ hours in with only 2/73 cleared at the default of
+# 50. Capped to 12 first: measured a striking, exact regularity -- one net
+# disabled every 8m12s, every single time, in strict descending net-ID order
+# (72, 71, 70, ...), regardless of iteration count within the cycle. That means
+# the cap barely changes *which* nets end up NDR-disabled (same order either
+# way), only how much time is wasted per cycle before conceding -- so pushed
+# lower still. GRT_ALLOW_CONGESTION above already means the router accepts
+# finishing with residual congestion instead of erroring, so this is a real
+# routing-quality tradeoff on these 73 nets specifically, but a predictable and
+# now much cheaper one.
+GRT_OVERFLOW_ITERS: 3
+
 # Let the legalizer search a long way. The template raises Y from LibreLane's
 # default for a design of two SRAMs and a counter; this one arrives at
 # `RepairDesignPostGPL` with a 5,773-load clock net, a 4,257-load reset and four
@@ -163,9 +197,113 @@ GRT_ALLOW_CONGESTION: true
 PL_MAX_DISPLACEMENT_X: 1000
 PL_MAX_DISPLACEMENT_Y: 1000
 
-# Fix antenna violations after DRT
-DRT_ANTENNA_REPAIR_ITERS: 10
-DRT_ANTENNA_REPAIR_MARGIN: 10 # %
+# Fix antenna violations after DRT. Ticket 27: OpenROAD's own antenna checker
+# converges to 0 net/pin violations at a 10% margin, but the full-chip KLayout
+# antenna deck (a stricter, independent model) still found 9 residual ANT.16_i_
+# ANT.4 (metal3-perimeter-to-gate-oxide-area) violations against that same
+# repaired route -- the same class of gap already found between OpenROAD's and
+# KLayout's DRC checkers for the metal3 spacing rule. Raised the margin so
+# OpenROAD's repair targets real headroom past its own threshold rather than
+# converging exactly to it, since exactly-at-threshold is what let KLayout's
+# stricter model disagree.
+DRT_ANTENNA_REPAIR_ITERS: 15
+DRT_ANTENNA_REPAIR_MARGIN: 25 # %
+
+# Ticket 29: OpenROAD.DetailedRouting was OOM-killed by the host kernel at
+# iteration 11 (confirmed via `journalctl -k`, a genuine global OOM, not a
+# container cgroup limit -- the openroad process itself held ~5.5 GB RSS at
+# the time). Unset, DRT_THREADS defaults to the host's full core count (20
+# here); capping it trades wall-clock time for a smaller peak working set,
+# since each thread holds its own regional routing state. DRT_SAVE_SNAPSHOTS
+# checkpoints the odb after every iteration (disk cost, ~450 GB free locally)
+# so a future crash loses at most one iteration instead of the ~13 hours this
+# one just did -- iterations 3-11 alone were 47 min to 2h43m each with no
+# incremental save.
+DRT_THREADS: 8
+DRT_SAVE_SNAPSHOTS: true
+
+# Ticket 27's macro-pitch fix (flow/macros.yaml, 301.300 -> 302.300 um between
+# SRAM columns) opened a real 1 um gap between abutted macros to clear a metal3
+# DRC violation, but a bare 1 um-wide, 515.81 um-tall sliver between two hard
+# macros is a routing-congestion trap: global routing "sees" it as available
+# capacity and repeatedly tries to thread nets through it, which measured as an
+# 80+ minute stall on a step that normally takes about 90 seconds (before the
+# fix, the same gap did not exist, so this trap did not either). Blocking every
+# routing layer over the 14 gaps (7 columns x 2 rows) makes routing treat them
+# exactly as it did when the macros were abutted -- fully non-routable -- while
+# the physical air gap that satisfies the DRC rule stays untouched, since this
+# only blocks new routed metal, not the macros' own fixed geometry.
+ROUTING_OBSTRUCTIONS:
+  - ["Metal1", 1061.3, 502.0, 1062.3, 1017.81]
+  - ["Metal2", 1061.3, 502.0, 1062.3, 1017.81]
+  - ["Metal3", 1061.3, 502.0, 1062.3, 1017.81]
+  - ["Metal4", 1061.3, 502.0, 1062.3, 1017.81]
+  - ["Metal5", 1061.3, 502.0, 1062.3, 1017.81]
+  - ["Metal1", 1363.6, 502.0, 1364.6, 1017.81]
+  - ["Metal2", 1363.6, 502.0, 1364.6, 1017.81]
+  - ["Metal3", 1363.6, 502.0, 1364.6, 1017.81]
+  - ["Metal4", 1363.6, 502.0, 1364.6, 1017.81]
+  - ["Metal5", 1363.6, 502.0, 1364.6, 1017.81]
+  - ["Metal1", 1665.9, 502.0, 1666.9, 1017.81]
+  - ["Metal2", 1665.9, 502.0, 1666.9, 1017.81]
+  - ["Metal3", 1665.9, 502.0, 1666.9, 1017.81]
+  - ["Metal4", 1665.9, 502.0, 1666.9, 1017.81]
+  - ["Metal5", 1665.9, 502.0, 1666.9, 1017.81]
+  - ["Metal1", 1968.2, 502.0, 1969.2, 1017.81]
+  - ["Metal2", 1968.2, 502.0, 1969.2, 1017.81]
+  - ["Metal3", 1968.2, 502.0, 1969.2, 1017.81]
+  - ["Metal4", 1968.2, 502.0, 1969.2, 1017.81]
+  - ["Metal5", 1968.2, 502.0, 1969.2, 1017.81]
+  - ["Metal1", 2270.5, 502.0, 2271.5, 1017.81]
+  - ["Metal2", 2270.5, 502.0, 2271.5, 1017.81]
+  - ["Metal3", 2270.5, 502.0, 2271.5, 1017.81]
+  - ["Metal4", 2270.5, 502.0, 2271.5, 1017.81]
+  - ["Metal5", 2270.5, 502.0, 2271.5, 1017.81]
+  - ["Metal1", 2572.8, 502.0, 2573.8, 1017.81]
+  - ["Metal2", 2572.8, 502.0, 2573.8, 1017.81]
+  - ["Metal3", 2572.8, 502.0, 2573.8, 1017.81]
+  - ["Metal4", 2572.8, 502.0, 2573.8, 1017.81]
+  - ["Metal5", 2572.8, 502.0, 2573.8, 1017.81]
+  - ["Metal1", 2875.1, 502.0, 2876.1, 1017.81]
+  - ["Metal2", 2875.1, 502.0, 2876.1, 1017.81]
+  - ["Metal3", 2875.1, 502.0, 2876.1, 1017.81]
+  - ["Metal4", 2875.1, 502.0, 2876.1, 1017.81]
+  - ["Metal5", 2875.1, 502.0, 2876.1, 1017.81]
+  - ["Metal1", 1061.3, 1118.0, 1062.3, 1633.81]
+  - ["Metal2", 1061.3, 1118.0, 1062.3, 1633.81]
+  - ["Metal3", 1061.3, 1118.0, 1062.3, 1633.81]
+  - ["Metal4", 1061.3, 1118.0, 1062.3, 1633.81]
+  - ["Metal5", 1061.3, 1118.0, 1062.3, 1633.81]
+  - ["Metal1", 1363.6, 1118.0, 1364.6, 1633.81]
+  - ["Metal2", 1363.6, 1118.0, 1364.6, 1633.81]
+  - ["Metal3", 1363.6, 1118.0, 1364.6, 1633.81]
+  - ["Metal4", 1363.6, 1118.0, 1364.6, 1633.81]
+  - ["Metal5", 1363.6, 1118.0, 1364.6, 1633.81]
+  - ["Metal1", 1665.9, 1118.0, 1666.9, 1633.81]
+  - ["Metal2", 1665.9, 1118.0, 1666.9, 1633.81]
+  - ["Metal3", 1665.9, 1118.0, 1666.9, 1633.81]
+  - ["Metal4", 1665.9, 1118.0, 1666.9, 1633.81]
+  - ["Metal5", 1665.9, 1118.0, 1666.9, 1633.81]
+  - ["Metal1", 1968.2, 1118.0, 1969.2, 1633.81]
+  - ["Metal2", 1968.2, 1118.0, 1969.2, 1633.81]
+  - ["Metal3", 1968.2, 1118.0, 1969.2, 1633.81]
+  - ["Metal4", 1968.2, 1118.0, 1969.2, 1633.81]
+  - ["Metal5", 1968.2, 1118.0, 1969.2, 1633.81]
+  - ["Metal1", 2270.5, 1118.0, 2271.5, 1633.81]
+  - ["Metal2", 2270.5, 1118.0, 2271.5, 1633.81]
+  - ["Metal3", 2270.5, 1118.0, 2271.5, 1633.81]
+  - ["Metal4", 2270.5, 1118.0, 2271.5, 1633.81]
+  - ["Metal5", 2270.5, 1118.0, 2271.5, 1633.81]
+  - ["Metal1", 2572.8, 1118.0, 2573.8, 1633.81]
+  - ["Metal2", 2572.8, 1118.0, 2573.8, 1633.81]
+  - ["Metal3", 2572.8, 1118.0, 2573.8, 1633.81]
+  - ["Metal4", 2572.8, 1118.0, 2573.8, 1633.81]
+  - ["Metal5", 2572.8, 1118.0, 2573.8, 1633.81]
+  - ["Metal1", 2875.1, 1118.0, 2876.1, 1633.81]
+  - ["Metal2", 2875.1, 1118.0, 2876.1, 1633.81]
+  - ["Metal3", 2875.1, 1118.0, 2876.1, 1633.81]
+  - ["Metal4", 2875.1, 1118.0, 2876.1, 1633.81]
+  - ["Metal5", 2875.1, 1118.0, 2876.1, 1633.81]
 
 # --- PDN --------------------------------------------------------------------
 
@@ -266,21 +404,33 @@ KLAYOUT_PROPERTIES: dir::gf180mcu_render.lyp
 # but can significantly improve the performance.
 # workers * threads should equal the available
 # hardware threads for a best possible utilization.
+#
+# Explicitly deep (the runset's own default): flow/klayout-drc-memory-research.md
+# first tried forcing run_mode: flat + a container memory cap to survive this
+# design's contact layer (17.7M polygons before merging), which worked but cost
+# 3-4x the wall time. A same-cap deep-mode run turned out both far lighter on
+# memory and faster across all 156 non-connectivity decks (2h56m total, peak
+# under 5 GB) -- deep mode's hierarchical engine exploits the huge repetition
+# in a real routed design (thousands of identical standard-cell-level via/metal
+# patterns) instead of flattening the whole chip for every rule. workers: 1
+# (sequential) is what was actually run and verified; a real host still needs
+# more headroom than this repo's default container memory limit -- see
+# flow/klayout-drc-memory-research.md for the run.sh MEMORY_LIMIT/
+# MEMORY_SWAP_LIMIT override this required.
 
 KLAYOUT_DRC_THREADS: 1
 
-# "max" equals max hardware threads
 KLAYOUT_DRC_OPTIONS:
   decks: "all,-antenna,-density,-cup" # disable CUP for now
   variant: ref::$PDK
-  workers: max
+  workers: 1
 
 KLAYOUT_DENSITY_OPTIONS:
   decks: "density"
   variant: ref::$PDK
-  workers: max
+  workers: 4
 
 KLAYOUT_ANTENNA_OPTIONS:
   decks: "antenna"
   variant: ref::$PDK
-  workers: max
+  workers: 4

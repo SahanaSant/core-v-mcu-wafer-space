@@ -14,9 +14,11 @@ set_units -time ns
 # --- The main clock ---------------------------------------------------------
 #
 # CLOCK_PORT is the pad, CLOCK_NET the pad cell's core-side output, so the clock
-# is defined after the input buffer rather than at the bond pad. 100 ns / 10 MHz
-# is ticket 05's settled target; since the clock is external, that is a
-# synthesis and bring-up target rather than anything burned into silicon.
+# is defined after the input buffer rather than at the bond pad. 166.67 ns /
+# 6 MHz is ticket 29's revision of ticket 05's original 100 ns / 10 MHz target,
+# down to match the real post-route critical path with margin (see
+# flow/config.yaml's CLOCK_PERIOD comment); since the clock is external, that
+# is a synthesis and bring-up target rather than anything burned into silicon.
 
 set clock_port __VIRTUAL_CLK__
 if { [info exists ::env(CLOCK_PORT)] } {
