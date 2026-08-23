@@ -71,7 +71,7 @@ define require
 	}
 endef
 
-.PHONY: help shell pdk elaborate area sta bootrom harden harden-cts sim sim-gl precheck precheck-image clean
+.PHONY: help shell pdk elaborate area sta bootrom harden harden-cts sync-final sim sim-gl precheck precheck-image clean
 
 help: ## Show this help
 	@echo "core-v-mcu-wafer-space"
@@ -126,6 +126,30 @@ harden: ## Run LibreLane RTL-to-GDS (ARGS= passes flags through)
 	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
 	@$(RUN) sh /foss/designs/flow/synth/sources.sh
 	@$(LIBRELANE) $(ARGS)
+	@$(MAKE) --no-print-directory sync-final
+
+# LibreLane is passed --save-views-to flow/final above and has never actually
+# populated it here: after a run that completed every step and every checker,
+# flow/final still held a GDS from a week earlier and had no spice/ directory
+# at all, which every completed run writes. So `make precheck` and `make
+# sim-gl` were reading a fossil rather than the run that had just finished,
+# silently, with nothing in either target's output to say so. That is what
+# ticket 30's "dry run against the 10 MHz-era GDS" actually was.
+#
+# Mirror the newest run's own final/ instead. That directory is the one
+# LibreLane definitely writes (it announces "Saving views to <run>/final" on
+# the way out), so it is the trustworthy source. Replace rather than merge:
+# flow/final is derived, and a half-updated mixture of two runs is exactly the
+# failure being fixed. Runs stopped early with --to never write a final/, so
+# they cannot be picked up by accident.
+sync-final: ## Point flow/final at the newest completed run's views
+	@src=$$(ls -td $(ROOT)/flow/runs/*/final 2>/dev/null | head -1); \
+	if test -z "$$src"; then \
+	  echo "sync-final: no completed run under flow/runs, leaving flow/final alone"; \
+	else \
+	  rm -rf $(ROOT)/flow/final && cp -a "$$src" $(ROOT)/flow/final && \
+	  echo "sync-final: flow/final <- $${src#$(ROOT)/}"; \
+	fi
 
 # OpenROAD's TritonCTS null-dereferences on this design on all but roughly one
 # attempt in a hundred: a real crash, intermittent rather than configuration
