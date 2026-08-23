@@ -193,14 +193,14 @@ CLOCK_PERIOD: 200
 # Ticket 29 raised this from the template's 0.35 after measuring what actually
 # survives to post-route. Two facts drive the number.
 #
-# First, this flow fixes hold exactly once, and it does it early. The Chip
-# flow resolves RUN_POST_GRT_RESIZER_TIMING to False, so there is no
-# ResizerTimingPostGRT step (confirm in any run directory: global routing at
-# step 34 is followed by CheckAntennas, not a resizer). Hold repair therefore
-# happens only in ResizerTimingPostCTS, against *estimated* parasitics, and
-# nothing revisits it once RCX has extracted the real ones. That also makes
-# GRT_RESIZER_HOLD_SLACK_MARGIN below dead config in this flow; it is kept
-# only so the pair reads consistently if the step is ever switched on.
+# First, this flow fixed hold exactly once, and it did it early. The Chip
+# flow resolves RUN_POST_GRT_RESIZER_TIMING to False by default, so there was
+# no ResizerTimingPostGRT step at all and hold repair happened only in
+# ResizerTimingPostCTS, against *estimated* parasitics, with nothing revisiting
+# it once RCX had extracted the real ones. That is no longer the case: the step
+# is switched on below, and GRT_RESIZER_HOLD_SLACK_MARGIN is live config. The
+# diagnosis in the rest of this block is what led there, so it is kept, but
+# read it as the reason for the fix rather than a description of the flow.
 #
 # Second, the gap between estimated and extracted is measurable.
 # RUN_2026-08-22_23-39-37 fixed hold to +0.35 ns post-CTS (1,394 endpoints,
@@ -264,7 +264,23 @@ PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
 # slack, and GRT_RESIZER_ALLOW_SETUP_VIOS is False so the hold repair cannot
 # trade setup away to do its job.
 RUN_POST_GRT_RESIZER_TIMING: true
-GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
+
+# 0.3 was the first value tried and it undershot. Turning the step on took
+# reg-to-reg hold violations from 57 to 19 while inserting a single buffer,
+# which says the aim was right and the margin was too small to reach the rest:
+# at 0.3 the step found one endpoint worth repairing and stopped. The 14
+# reg-to-reg violations left at signoff are all inside 0.204 ns, so a 0.6
+# margin covers every one of them with room to spare.
+#
+# The risk of raising it is the failure already seen once at the post-CTS
+# stage, where a large margin bought 33,152 buffers and made hold worse by
+# moving clock sinks. It does not carry over here. That blowup came from
+# repairing 14,640 endpoints against estimated parasitics before CTS had
+# settled; this step runs after global routing, on a placed and clocked
+# design, and its own measured behaviour at 0.3 was one endpoint and one
+# buffer. Doubling the margin against a violation set that tops out at
+# 0.204 ns is a different order of intervention entirely.
+GRT_RESIZER_HOLD_SLACK_MARGIN: 0.6
 
 # Run 1 designs achieved 3k to 14k cells/mm2 against a much higher theoretical
 # maximum, and ticket 10 flagged 35% as the optimistic end of that experience.

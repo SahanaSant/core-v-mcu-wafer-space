@@ -176,6 +176,32 @@ set clk_core_input_ports [get_ports {
 set_input_delay -min 0 -clock $clocks $clk_core_input_ports
 set_input_delay -max $input_delay_value -clock $clocks $clk_core_input_ports
 
+# The min (hold) half of those input delays describes a launch that does not
+# exist. bidir_PAD and rst_n_PAD are asynchronous to clk_PAD: nothing outside
+# the chip launches them off this clock, so there is no real hold relationship
+# to check. Both are synchronised in RTL before anything acts on them.
+# apb_gpio shifts gpio_in through r_gpio_sync0, r_gpio_sync1 and r_gpio_in
+# before the APB side sees it; rst_n reaches the SoC through rstgen_bypass,
+# whose synch_regs_q chain asserts asynchronously and releases synchronously.
+# Those synchronisers are what makes the pad-to-first-flop arrival time not
+# matter, which is precisely what a hold check on it would be asserting.
+#
+# Left declared, the check is not merely noise. With set_input_delay -min 0
+# against a clock network of zero propagated delay the requirement cannot be
+# satisfied at any corner, so the resizer chases it: the worst offender,
+# bidir_PAD[27], carries eight inserted hold buffers in series and still
+# reports -0.416 ns. The repair is unbounded because the target is fictitious,
+# and every buffer it adds is area and leakage spent on nothing.
+#
+# Scoped to -hold so the max/setup constraints stay exactly as they were; they
+# already pass with room and they are what keeps these ports from being
+# unconstrained. The other asynchronous inputs (input_PAD, carrying stm_i, the
+# JTAG inputs and the spares) very likely deserve the same treatment, but they
+# are not violating and their consumers have not been traced, so they are left
+# alone rather than false-pathed on an assumption.
+set_false_path -hold -from $clk_core_inout_ports
+set_false_path -hold -from [get_ports rst_n_PAD]
+
 # jtag_tdo is the one output outside the io array. With the TAP's own clock
 # undeclared (see above) it is constrained against the main clock, which is not
 # the clock that launches it; the constraint is here so the port is not left
