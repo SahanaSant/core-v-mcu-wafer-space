@@ -409,3 +409,96 @@ placement, not in DRT iteration count.
 What this does NOT establish: that a *different* placement fails too. Every
 number here describes one specific placed database. The next move is upstream
 work, then a fresh route, not more iterations on this one.
+
+## Comments (the 6 MHz run's real numbers, and why the answer is 5 MHz)
+
+**`RUN_2026-08-22_23-39-37` is the first run to carry all four of the `L2_BANK_SIZE` fix, the
+6 MHz boot ROM, the word-alignment guard and a converged route, and its post-route STA
+(`50-openroad-stapostpnr`) is the measurement this ticket has been waiting for since it was
+written. It closes neither half of the Definition of Done, and it misses them in opposite
+directions.**
+
+Setup at `max_ss_125C_3v00`: **WNS -7.72 ns, 162 violations**, against -28.59 ns and 9,127 at
+100 ns. `tt` and `ff` still pass with 29-38 ns to spare, so this stayed corner-specific
+exactly as ticket 26 found. The 100 -> 166.67 move did roughly 98% of the work by violation
+count and still did not close.
+
+**All 162 violations launch from one flop.** `_156233_/Q`, which is
+`i_chip_core.i_core_v_mcu.i_soc_domain.fc_subsystem_i.lFC_CORE.id_stage_i.decoder_i.instr_rdata_i[17]`,
+is the startpoint of every single one; the endpoints differ. So this is one path's fanout,
+not 162 independent problems, and it is the same *structure* ticket 22 and the earlier
+comments above found (a decoder instruction-word bit), one bit over.
+
+**Traced the path end to end rather than assuming it was decoder-local, and it is not.** It
+runs decoder -> `id_stage_i.controller_i.id_valid_i` -> across the die into
+`i_soc_interconnect.i_axi_xbar.i_xbar...i_aw_arbiter.gen_arbiter.req_d[1]`. 176 stages,
+169.57 ns of data path from launch `Q` to capture `D`. Attributing that delay by cell class:
+
+| class | delay | stages |
+|---|---|---|
+| real logic | 85.40 ns (50.4%) | 71 |
+| resizer repair buffers | 84.18 ns (49.6%) | 80 |
+
+The 80 repair buffers are 46 `wire*`, 26 `load_slew*`, 5 `fanout*` and 3 `max_cap*`, averaging
+1.05 ns each. Applying this map's own lesson from ticket 32 (buffers are evidence about the
+resizer's constraints first): this time the constraints are *right*. The path physically
+crosses the die, and a long wire at 3.0 V and 125 C genuinely needs that buffering. There is
+no degenerate repair to switch off here the way there was for max-fanout. Closing this at
+6 MHz means pipelining decode-to-interconnect, which ticket 22 already put off this map.
+
+**So the answer is the lever ticket 05 built in on purpose: the clock is external.** At 200 ns
+this exact netlist has **+25.61 ns** of setup slack. That is arithmetic on a fixed netlist
+rather than a fresh run, and it is exact for the reason that makes it safe to rely on: arrival
+time is a property of the routed netlist (188.56 ns), only required time moves with the period,
+so +33.33 ns of period is +33.33 ns of slack, to the picosecond. A re-harden at 200 ns can only
+beat it, because the resizer stops chasing a target it cannot reach. 5 MHz is as ordinary a
+crystal as 6, and it divides exactly where 6 MHz left cocotb truncating 166.67 to 166.
+
+**Hold is the other half of the DoD, it regressed, and no period change touches it** (hold is
+period-independent for a same-edge check). 69 violations at `max_ff_n40C_3v60` against 1 last
+measured: 57 reg-to-reg at worst -0.140 ns, and 12 input-pad-to-register at worst -0.359 ns.
+
+Root-caused rather than patched blind. **This flow fixes hold exactly once, and early.**
+`RUN_POST_GRT_RESIZER_TIMING` resolves to `False` in the Chip flow, so there is no
+`ResizerTimingPostGRT` step at all: step 34 is `GlobalRouting` and step 35 is `CheckAntennas`,
+with no resizer between them. Hold is repaired only in `ResizerTimingPostCTS` (1,394 endpoints,
+1,333 buffers, against *estimated* parasitics) and nothing revisits it after `RCX` extracts the
+real ones. Two consequences worth carrying forward: **`GRT_RESIZER_HOLD_SLACK_MARGIN` is dead
+config in this flow** and has been silently doing nothing, and the estimate-to-extraction gap
+is measurable at up to 0.35 + 0.36 = **0.71 ns**. `PL_RESIZER_HOLD_SLACK_MARGIN` 0.35 -> 1.0
+covers that with 0.29 ns spare, which is deliberate over-insurance: hold buffers are 0.6% of
+this design and a hold failure is the one thing that cannot be fixed after fabrication.
+
+**Two things checked and deliberately not fixed**, so the next reader does not re-open them:
+
+- The 321 `max capacitance` violations at `ss` are every `bidir_PAD[n]` port at 3.79 pF against
+  a 0.2 pF limit. That limit is `set_max_capacitance` applied to `[current_design]`, which
+  catches the ports; a bond pad drives an off-chip load by design. Constraint artifact.
+- The 571 `max slew` violations concentrate on the uDMA per-peripheral clock gates
+  (`i_clk_gate_per`, `i_clk_gate_sdio`, `u_clockgen`) and the L2 SRAM clock pins, worst 9.38 ns
+  against 3 ns. `flow/chip_top.sdc`'s own header already documents these domains as
+  unconstrained and therefore un-CTS'd, buffered as ordinary data nets. Known and already
+  written down, not a new finding.
+
+**Also measured, because it changes what a re-harden costs:** this run is far cheaper than the
+previous handoff feared. `RepairAntennas` took **7m01s**, not the ~9.5 hours it cost once;
+detailed routing 23m51s; the whole run reached KLayout DRC in about 4 hours. The two longest
+steps are now `RepairDesignPostGPL` (54m32s, and it should shrink at 200 ns) and the signoff
+DRC decks (`Magic.DRC` 45m50s, `KLayout.DRC` ~3 h). `KLAYOUT_DRC_THREADS` is 1 while the
+antenna and density decks run 4 workers, so that 3 hours is a real lever, left alone
+deliberately: KLayout DRC holds 4.1 GB single-threaded on a 15 GB host, and this map has lost
+more time to host OOM than it would save.
+
+Every checker up to that point is clear on this run: routing DRC, disconnected pins, XOR,
+KLayout antenna, KLayout density, and Magic DRC.
+
+Applied the whole change set and rebuilt what depends on it (5 MHz is a silent functional bug
+if a constant is left stale, not a timing one): both `PERIPH_CLK_HZ` definitions,
+`sim/cocotb/tb_top_tb.py`'s `CLK_HZ`, `sim/tb/tb_top.sv`'s `CLKS_PER_BIT` (43, the truncated
+5e6/115200 the divider actually lands on). Checked the boot SPI divisor rather than assuming:
+`BOOT_SPI_CLK_HZ` is 2.5 MHz, so the divisor goes 1.2 -> 1 at 6 MHz and 1.0 -> 1 at 5 MHz,
+which means the boot clock was silently running at 3 MHz and now lands on exactly 2.5 MHz.
+Regenerated `gf180_bootrom.sv` (self-check passes, 208 words) and rebuilt `sw/app` (563 bytes).
+
+**Still open pending the confirming re-harden at 200 ns**, which is what this ticket's own
+discipline requires before either number counts.
