@@ -578,6 +578,19 @@ signed ECA covering the commit author.
   second**, and `flow/synth/buffer_report.py` is what made that visible by charging every
   inserted instance back to the net it descends from.
 
+- [31 Write the gate-level simulation harness: boot from flash, print over UART](issues/31-gate-level-sim-harness.md)
+  — **It boots and prints, on the netlist that will be taped out.** `BOOT OK` and `SRAM PASS`
+  over UART at 28.2 ms of simulated time, four chip selects and 4,656 SCLK edges of real SPI
+  flash boot with the CRC checked, then execution from L2. Half the destination is met. The
+  finding that outlives the ticket is a plumbing trap: **`make harden` chains `sync-final`
+  after LibreLane, and LibreLane exits non-zero whenever a checker defers an error, so the
+  chain aborts and `flow/final` silently keeps pointing at the previous run.** Both
+  `make precheck` and `make sim-gl` read `flow/final`, so for several sessions they validated
+  a fossil (39 MB netlist against the real 71.6 MB) with nothing in their output to say so.
+  That, not a bad GDS, is what ticket 30's "dry run against the 10 MHz-era GDS" was. After any
+  harden that exits non-zero, run `make sync-final` by hand before believing either target.
+  Budget 23 minutes of wall clock per full gate-level boot, at 20,768 ns/s.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its

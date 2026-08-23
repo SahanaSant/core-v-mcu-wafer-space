@@ -1,7 +1,7 @@
 # Write the gate-level simulation harness: boot from flash, print over UART
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## Question
@@ -1011,3 +1011,40 @@ functionally valid (the only clock-dependent thing baked into the netlist is the
 divisor, which lands on 1 at either frequency), but the netlist that ships is the 200 ns one
 ticket 29 is re-hardening for. The harness and the design are proven; what remains is repeating
 this against the final netlist.
+
+## Answer
+
+**Resolved. The hardened netlist boots from SPI flash and prints over UART, and
+the run that proves it is against the netlist that will actually be taped out.**
+
+The earlier pass recorded above was real but it was measured against whatever
+`flow/final` happened to hold, and `flow/final` was a fossil: `make harden`
+chains `sync-final` after LibreLane, LibreLane exits non-zero when a checker
+defers an error, and a non-zero exit aborts the chain. So every completed run
+since the plumbing was added left `flow/final` pointing at its predecessor,
+silently, with nothing in `make sim-gl`'s output to say which netlist it had
+read. The fossil was 39 MB; the real one is 71.6 MB.
+
+Re-run after syncing `flow/final` to `RUN_2026-08-23_09-43-11`, the 200 ns /
+5 MHz run with the post-GRT resizer enabled:
+
+```
+28203400.00ns  tb_top_tb.test_boot_and_uart  PASS
+TESTS=1  PASS=1  FAIL=0  SKIP=0    28203400.00 ns    1358.02 s    20768 ns/s
+```
+
+`BOOT OK` and `SRAM PASS` both appear on the UART. The boot signature is
+unchanged from the RTL run: four chip selects, 4,656 SCLK edges, then the flash
+interface goes quiet at 2 ms while L2 accesses keep climbing, which is the
+bootrom finishing its load and the core executing from SRAM. Boot completes at
+20.4 ms and the SRAM test at 28.0 ms, inside the 100 ms `TIMEOUT_NS` with room.
+
+Measured throughput is 20,768 ns/s, against the 23,360 ns/s recorded earlier in
+this ticket. The netlist grew, so it got slower; the earlier figure was not
+wrong, it was measured on a smaller design. Wall clock for a full boot is about
+23 minutes, which is the number to budget from.
+
+The half of the map's destination that reads "with gate-level simulation showing
+the hardened netlist boots and prints over UART" is met.
+
+Status: resolved.
