@@ -959,3 +959,55 @@ tracer for exactly this reason, so a normal run's UART output reads straight.
 24 ms of simulated time, about five minutes of wall clock at 78,000 ns/s, on top
 of a Verilator rebuild of similar length whenever the testbench changes. Almost
 all of the 24 ms is `crcSlow()`.
+
+## Comments (it passes: the netlist boots and prints)
+
+**`make sim-gl` passed.** Against `RUN_2026-08-22_23-39-37`'s post-PnL netlist, from the first
+run in this project's history to complete every step with DRC, LVS, density, antenna, XOR and
+illegal-overlap all clear, the harness decodes **`BOOT OK`** and **`SRAM PASS`** over UART0 and
+the cocotb test reports PASS. First gate-level run in this ticket's history to end by passing
+rather than by being killed or timing out.
+
+**What was actually stopping it was the waveform trace, not the design, and not the timeout.**
+`waves=True` was hardcoded in both `runner.build()` and `runner.test()`. Measured on an RTL run
+started to validate the 5 MHz software: **7.43 us of simulated time cost 1.5 GB of VCD and about
+seven minutes**, an effective ~18 ns/s against the 39,553 ns/s this file recorded for Verilator.
+A full boot needs 28.204 ms, so that run was heading for something on the order of terabytes of
+trace and could not have finished on this disk at any timeout setting. Every performance number
+this ticket ever recorded was measured through that overhead, which is why boot kept looking
+like it was hanging when it was only crawling.
+
+Nothing in the test reads the VCD: both assertions poll cocotb handles (`boot_ok_seen`,
+`sram_pass_seen`) and the UART bytes come from `tb_top.sv`'s own `$display`. So it is purely a
+debugging aid, and it is now opt-in with `WAVES=1`.
+
+Re-measured with it off, and corrected every place carrying the old figures:
+
+| | rate | 28.204 ms boot |
+|---|---|---|
+| RTL, Verilator | 233,439 ns/s | 121 s |
+| gate level, Icarus | 23,360 ns/s | 1,207 s |
+
+That is 5.9x and 2.7x faster respectively, and it turns this ticket's debug loop from hours
+into a 21-minute gate-level run and a 3-minute RTL one.
+
+**Also corrected: "boot either completes or hangs within tens of microseconds"**, which is why
+20 ms once looked like a generous deadline when it was not. The SPI phase does finish in tens of
+microseconds, but `crcSlow()` is a bit-at-a-time CRC32 over the whole image and the app then
+walks 512 B of L2 twice. That is where the other 28 ms goes. Do not size this timeout off the
+flash trace. `TIMEOUT_NS=45000000` is the useful setting, about 1.6x real boot time.
+
+**Two observations recorded rather than fixed:**
+
+- The flash model prints `False instruction (66)` and `(99)` early in every run. Those are
+  0x66/0x99, JEDEC Enable-Reset and Reset-Device, which `sw/bootrom/spi.c` issues on purpose and
+  the `GD25Q128B` model does not implement. Boot proceeds correctly through both. Cosmetic.
+- The gate-level liveness probe works. Its escaped identifier resolves in the netlist and the L2
+  access counter climbs exactly as expected: flat during the ROM's SPI phase, then steeply from
+  20 ms once the app starts walking L2.
+
+**Not resolved yet.** This is the 166.67 ns netlist, driven at 5 MHz. That combination is
+functionally valid (the only clock-dependent thing baked into the netlist is the boot ROM's SPI
+divisor, which lands on 1 at either frequency), but the netlist that ships is the 200 ns one
+ticket 29 is re-hardening for. The harness and the design are proven; what remains is repeating
+this against the final netlist.
