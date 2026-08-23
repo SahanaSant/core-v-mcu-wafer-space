@@ -19,7 +19,7 @@
 // upstream's own a2_boot/srec2verilog.py already used to turn an .srec into
 // Verilog for the original a2_bootrom.sv.
 //
-// Built: 2026-08-22, 208 words, 832 bytes (ticket 04 estimated 2 KiB).
+// Built: 2026-08-23, 208 words, 832 bytes (ticket 04 estimated 2 KiB).
 
 module a2_bootrom #(
     parameter int unsigned ADDR_WIDTH = 11,
@@ -152,9 +152,9 @@ module a2_bootrom #(
       105: rom_word = 32'h0586fff5;
       106: rom_word = 32'hc71c8ff5;
       107: rom_word = 32'h8d5d431c;
-      108: rom_word = 32'h005b97b7;
+      108: rom_word = 32'h004c57b7;
       109: rom_word = 32'h8793c308;
-      110: rom_word = 32'h4705d807;
+      110: rom_word = 32'h4705b407;
       111: rom_word = 32'h00b7e463;
       112: rom_word = 32'h02b7d733;
       113: rom_word = 32'h1c0047b7;

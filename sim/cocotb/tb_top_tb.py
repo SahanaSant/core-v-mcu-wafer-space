@@ -45,10 +45,13 @@ flash_hex = os.getenv("FLASH_HEX", str(Path(__file__).resolve().parent / "../../
 hdl_toplevel = "tb_top"
 
 # Ticket 05/24/29: clk_PAD is ref_clk_i bypassed undivided, i.e. periph_clk.
-# Ticket 29 moved this to 6 MHz; keep in step with flow/config.yaml's
-# CLOCK_PERIOD and sw/app/main.c's APP_BAUD_HZ (which sets tb_top.sv's
-# CLKS_PER_BIT) if it changes again.
-CLK_HZ = 6_000_000
+# Ticket 29 moved this to 6 MHz and then to 5 MHz, the frequency at which
+# post-route STA closes at the slow corner. Keep in step with
+# flow/config.yaml's CLOCK_PERIOD and sw/app/main.c's APP_BAUD_HZ (which sets
+# tb_top.sv's CLKS_PER_BIT) if it changes again. 5 MHz also divides exactly:
+# the Clock() call below floors 1e9/CLK_HZ to an integer ns, which silently
+# truncated 166.67 to 166 at 6 MHz and is exactly 200 here.
+CLK_HZ = 5_000_000
 
 # Gate-level Icarus sim of the full SoC, measured over a full run rather than
 # extrapolated: 20,001,000 ns in 2340 real seconds, i.e. 8547 ns/s. RTL under

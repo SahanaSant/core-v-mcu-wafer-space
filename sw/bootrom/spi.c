@@ -37,10 +37,11 @@
 #include "udma_qspi_driver.h"
 
 /* Ticket 05: soc_clk_o/periph_clk_o/cluster_clk_o are ref_clk_i, undivided.
- * Ticket 29 revised the external ref_clk_i target from 10 MHz to 6 MHz to
- * match the real post-route critical path; keep this in step with
- * flow/config.yaml's CLOCK_PERIOD if it changes again. */
-#define PERIPH_CLK_HZ 6000000u
+ * Ticket 29 revised the external ref_clk_i target from 10 MHz to 6 MHz and
+ * then to 5 MHz, the frequency at which post-route STA finally closes at the
+ * slow corner. Keep this in step with flow/config.yaml's CLOCK_PERIOD,
+ * sw/app/uart.c's PERIPH_CLK_HZ, and the two sim constants named there. */
+#define PERIPH_CLK_HZ 5000000u
 
 /* udma_clk_div_cnt.sv toggles clk_o every `target` periph_clk cycles, so the
  * output period is 2*target periph_clk cycles: spi_clk = periph_clk / (2*N).

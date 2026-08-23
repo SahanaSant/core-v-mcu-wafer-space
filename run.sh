@@ -61,6 +61,6 @@ exec "$ENGINE" run --rm $TTY $USERFLAG $MEMFLAGS \
     -e TOP="${TOP:-core_v_mcu}" \
     -e MODE="${MODE:-both}" \
     -e LIB_CORNER="${LIB_CORNER:-ss_125C_3v00}" \
-    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-166.67}" \
+    -e CLOCK_PERIOD_NS="${CLOCK_PERIOD_NS:-200}" \
     -e TIMEOUT_NS="${TIMEOUT_NS:-}" \
     "$IMAGE" --skip "$@"

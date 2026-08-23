@@ -118,7 +118,7 @@ module tb_top #(
   logic [7:0] uart_byte_data;
 
   uart_rx #(
-      .CLKS_PER_BIT(52)  // 6 MHz periph_clk / 115200 baud, sw/app/main.c's APP_BAUD_HZ
+      .CLKS_PER_BIT(43)  // 5 MHz periph_clk / 115200 baud, sw/app/main.c's APP_BAUD_HZ
   ) uart_rx_i (
       .clk(clk_PAD),
       .rst_n(rst_n_PAD),

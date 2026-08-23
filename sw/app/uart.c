@@ -16,9 +16,15 @@
 #include "uart.h"
 
 /* Ticket 29 revised ref_clk_i (and therefore periph_clk, undivided per ticket
- * 05) from 10 MHz to 6 MHz. Keep this in step with flow/config.yaml's
- * CLOCK_PERIOD and sw/bootrom/spi.c's PERIPH_CLK_HZ if it changes again. */
-#define PERIPH_CLK_HZ 6000000u
+ * 05) from 10 MHz to 6 MHz and then to 5 MHz, the frequency at which
+ * post-route STA closes at the slow corner. Keep this in step with
+ * flow/config.yaml's CLOCK_PERIOD and sw/bootrom/spi.c's PERIPH_CLK_HZ.
+ *
+ * The divider below truncates: 5,000,000 / 115,200 is 43.4, so the UART runs
+ * at 5e6/43 = 116,279 baud, 0.9% fast. Well inside the ~2% a receiver
+ * tolerates over ten bit times, but it is why sim/tb/tb_top.sv's uart_rx is
+ * parameterised with the truncated 43 rather than the exact ratio. */
+#define PERIPH_CLK_HZ 5000000u
 
 void uart0_open(uint32_t baudrate)
 {

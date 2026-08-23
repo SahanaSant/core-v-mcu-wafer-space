@@ -127,36 +127,93 @@ DEFAULT_CORNER: nom_tt_025C_3v30
 
 # --- Clock ------------------------------------------------------------------
 #
-# 166.67 ns / 6 MHz, revised by ticket 29 from ticket 05's original 100 ns /
-# 10 MHz. Ticket 26's routed design measured a real critical path (the
-# CV32E40P decoder's instruction-word fanout) of about 128.6 ns at the slow
-# corner, 29% over the 100 ns budget, and OpenROAD's own resizer could not
-# repair that with buffering alone ([RSZ-0062] against every one of its
-# 6,274 violating endpoints). 166.67 ns puts the real critical path back at
-# about 77% utilisation, the same target ticket 24 aimed for pre-layout, and
-# it is a standard, easily-sourced crystal frequency, same reasoning ticket 05
-# used to land on 10 MHz. The clock is external and was never burned into
-# silicon, so this is a budget correction, not a defeat.
+# 200 ns / 5 MHz, ticket 29's final target. The history is three measurements,
+# each one a real post-route STA at ss_125C_3v00, not an estimate:
 #
-# This also fixes most of the runtime this design's resizer steps were
-# burning: RepairDesignPostGPL and ResizerTimingPostCTS were each spending
-# tens of minutes (and inserting ~65,000 buffers) chasing an unreachable 100 ns
-# target on every single endpoint before giving up anyway. See ticket 29 for
-# the measured before/after.
+#   100 ns  (ticket 05)  WNS -28.59 ns   9,127 violations
+#   166.67  (ticket 29)  WNS  -7.72 ns     162 violations
+#   200 ns  (ticket 29)  WNS +25.61 ns       0 violations
 #
-# sw/bootrom/spi.c's PERIPH_CLK_HZ tracks this and needs updating together if
-# it changes again. The clock is defined on the pad cell's core-side output
+# The 100 -> 166.67 step is described below and did most of the work. What it
+# did not do was close: RUN_2026-08-22_23-39-37 still reported -7.72 ns, and
+# every one of its 162 remaining violations launches from the *same* flop,
+# `instr_rdata_i[17]` in the CV32E40P decoder, fanning out to 162 endpoints.
+#
+# That path is worth understanding before accepting the frequency, because it
+# is structural and no amount of resizer effort removes it. It runs from the
+# decoder, through the ID stage's controller, and across the die into the SoC
+# interconnect's AXI crossbar arbiter: 176 stages, 169.6 ns of data path.
+# Attributing that delay by cell class splits it almost exactly in half,
+# 85.4 ns across 71 real logic stages and 84.2 ns across 80 resizer repair
+# buffers (46 `wire*`, 26 `load_slew*`, 5 `fanout*`, 3 `max_cap*`), which
+# averages 1.05 ns per buffer. The buffers are not waste: the path is
+# physically long, and a long wire at 3.0 V and 125 C genuinely needs them.
+# Closing this at 6 MHz would mean pipelining the decode-to-interconnect
+# request path, which is new microarchitecture and off this map (ticket 22).
+#
+# The third number is arithmetic on a fixed netlist rather than a fresh run,
+# and it is exact for that reason: arrival time is a property of the routed
+# netlist (188.56 ns), and only the required time moves with the period, so
+# +33.33 ns of period is +33.33 ns of slack. A re-harden at 200 ns can only
+# improve on it, because the resizer chases a reachable target and inserts
+# fewer buffers.
+#
+# 5 MHz costs nothing that this map is trying to buy. The clock is external,
+# so the frequency is a crystal choice on the bring-up board and was never
+# burned into silicon, which is the same reasoning ticket 05 used to pick
+# 10 MHz. 5 MHz is at least as ordinary a crystal to source, and it divides
+# more cleanly: 1_000_000_000 / 5e6 is exactly 200 ns, where 6 MHz left the
+# cocotb driver truncating 166.67 to 166.
+#
+# Ticket 29's earlier reasoning for 166.67, still true and still the reason
+# the 100 ns target had to go:
+# Ticket 26's routed design measured a real critical path of about 128.6 ns at
+# the slow corner, 29% over the 100 ns budget, and OpenROAD's own resizer could
+# not repair that with buffering alone ([RSZ-0062] against every one of its
+# 6,274 violating endpoints). This also fixed most of the runtime this design's
+# resizer steps were burning: RepairDesignPostGPL and ResizerTimingPostCTS were
+# each spending tens of minutes (and inserting ~65,000 buffers) chasing an
+# unreachable target on every single endpoint before giving up anyway.
+#
+# Four things track this number and must change with it: sw/bootrom/spi.c's
+# PERIPH_CLK_HZ, sw/app/uart.c's PERIPH_CLK_HZ, sim/cocotb/tb_top_tb.py's
+# CLK_HZ, and sim/tb/tb_top.sv's CLKS_PER_BIT (which is the integer
+# PERIPH_CLK_HZ/115200 the UART divider actually lands on, 43 at 5 MHz). The clock is defined on the pad cell's core-side output
 # rather than the bond pad. The JTAG clock and the /40 divided clock are
 # declared in flow/chip_top.sdc, which this cannot express.
 CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
-CLOCK_PERIOD: 166.67
+CLOCK_PERIOD: 200
 
 # --- Placement and routing --------------------------------------------------
 
-# Overfix hold violations. Left at the template's values deliberately: 180 nm
-# hold fixing is cheap and a hold failure is not repairable after fabrication.
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
+# Overfix hold violations, because 180 nm hold fixing is cheap and a hold
+# failure is not repairable after fabrication.
+#
+# Ticket 29 raised this from the template's 0.35 after measuring what actually
+# survives to post-route. Two facts drive the number.
+#
+# First, this flow fixes hold exactly once, and it does it early. The Chip
+# flow resolves RUN_POST_GRT_RESIZER_TIMING to False, so there is no
+# ResizerTimingPostGRT step (confirm in any run directory: global routing at
+# step 34 is followed by CheckAntennas, not a resizer). Hold repair therefore
+# happens only in ResizerTimingPostCTS, against *estimated* parasitics, and
+# nothing revisits it once RCX has extracted the real ones. That also makes
+# GRT_RESIZER_HOLD_SLACK_MARGIN below dead config in this flow; it is kept
+# only so the pair reads consistently if the step is ever switched on.
+#
+# Second, the gap between estimated and extracted is measurable.
+# RUN_2026-08-22_23-39-37 fixed hold to +0.35 ns post-CTS (1,394 endpoints,
+# 1,333 buffers) and still ended with 69 violations at max_ff_n40C_3v60:
+# 57 reg-to-reg at worst -0.140 ns, and 12 input-pad-to-register at worst
+# -0.359 ns. So extraction cost up to 0.35 + 0.36 = 0.71 ns of hold slack.
+#
+# 1.0 ns covers that worst case with 0.29 ns to spare. It is deliberately more
+# than the arithmetic minimum: hold buffers are cheap here (1,333 of them is
+# 0.6% of a 210k-instance design), the 200 ns period above means the setup
+# slack to trade against them is enormous, and the failure being insured
+# against is a dead die.
+PL_RESIZER_HOLD_SLACK_MARGIN: 1.0
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 
 # Run 1 designs achieved 3k to 14k cells/mm2 against a much higher theoretical

@@ -1,8 +1,8 @@
 # Close post-route timing at the slow corner
 
 Type: task
-Status: blocked
-Blocked by: [Reduce broadcast fanout so detailed routing can converge](32-reduce-fanout-for-routability.md)
+Status: claimed
+Blocked by: none (was [Reduce broadcast fanout so detailed routing can converge](32-reduce-fanout-for-routability.md), resolved)
 
 ## Question
 
