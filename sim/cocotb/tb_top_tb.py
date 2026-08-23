@@ -33,8 +33,10 @@ gl = os.getenv("GL", "0") == "1"
 # file for the behavioural clock cells already vendored under
 # core-v-mcu/rtl/vendor removes the last reference, so RTL needs nothing from
 # libs.ref/gf180mcu_fd_sc_mcu7t5v0 and Verilator becomes usable. That matters:
-# gate-level measures 7,903 ns/s, and iterating on boot software at that rate
-# is hours per attempt. SIM overrides either default.
+# with waves off (see WAVES below) gate-level measures 23,360 ns/s against
+# Verilator's 233,439 ns/s, so RTL is the ten-times-faster loop to iterate boot
+# software in, and gate level is where the netlist gets confirmed. SIM
+# overrides either default.
 sim = os.getenv("SIM") or ("icarus" if gl else "verilator")
 pdk_root = os.getenv("PDK_ROOT", str(Path(__file__).resolve().parent / "../../pdk"))
 pdk = os.getenv("PDK", "gf180mcuD")
@@ -53,21 +55,29 @@ hdl_toplevel = "tb_top"
 # truncated 166.67 to 166 at 6 MHz and is exactly 200 here.
 CLK_HZ = 5_000_000
 
-# Gate-level Icarus sim of the full SoC, measured over a full run rather than
-# extrapolated: 20,001,000 ns in 2340 real seconds, i.e. 8547 ns/s. RTL under
-# Verilator measures 39,553 ns/s, five times faster.
+# A full boot-and-report is **28.204 ms** of simulated time, measured end to
+# end on runs that reached "SRAM PASS" rather than extrapolated, and it is the
+# same figure at RTL and at gate level (the design does the same work either
+# way). With waves off that costs 121 s under Verilator (233,439 ns/s) and
+# 1,207 s under Icarus at gate level (23,360 ns/s).
 #
-# 100 ms is deliberately generous rather than derived, and it exists only so an
-# unattended run cannot be cut short. It is NOT a boot-time estimate: boot
-# either completes or hangs within tens of microseconds, so a debugging run
-# should override TIMEOUT_NS down to 1 ms and cost ~25 s rather than hours.
+# So 45 ms is the useful setting: about 1.6x the real boot time, enough that a
+# run which is merely slow is not cut off, small enough that a run which has
+# genuinely hung gives up in well under an hour. The default here stays at
+# 100 ms only as an unattended backstop.
 #
-# The 20 ms this held before was replaced on the strength of arithmetic that
-# was wrong by 1000x. The SRAM models' first-access reports were read as
-# milliseconds, but that model declares `timescale 1 ps / 1 ps` and prints with
-# %0t, so 3.155 "ms" was 3.155 us. Boot was not in flight at the old deadline;
-# it had been hung for 19.98 of those 20 ms. Beware: %0t prints in the
-# precision of the module doing the printing, not the testbench's.
+# Two earlier estimates in this file were wrong, both worth knowing about:
+#
+# - The 20 ms this held before was replaced on the strength of arithmetic that
+#   was wrong by 1000x. The SRAM models' first-access reports were read as
+#   milliseconds, but that model declares `timescale 1 ps / 1 ps` and prints
+#   with %0t, so 3.155 "ms" was 3.155 us. Beware: %0t prints in the precision
+#   of the module doing the printing, not the testbench's.
+# - "Boot either completes or hangs within tens of microseconds" was also
+#   wrong, and it is why the deadline looked generous when it was not. The SPI
+#   phase does finish in tens of microseconds, but crcSlow() is a bit-at-a-time
+#   CRC32 over the whole image and the app then walks 512 B of L2 twice, which
+#   is where the other 28 ms goes. Do not size a timeout off the flash trace.
 TIMEOUT_NS = int(os.getenv("TIMEOUT_NS") or 100_000_000)
 
 
@@ -262,6 +272,23 @@ def build_args():
     return ["-g2012"]
 
 
+# Waveform dumping is off unless WAVES=1, because on a design this size it is
+# not a small overhead, it is the dominant cost of the whole run.
+#
+# Measured on the RTL run that prompted this: 7.43 us of simulated time cost
+# 1.5 GB of VCD and about seven minutes, i.e. roughly 18 ns/s. The 39,553 ns/s
+# this file quotes elsewhere for Verilator is three orders of magnitude away
+# from that, so waves were the difference. Extrapolating the VCD alone, the
+# 40 ms a full boot needs would have been on the order of terabytes: the run
+# could not have finished on this disk, let alone in reasonable time.
+#
+# Nothing in the test reads the VCD. Both assertions poll cocotb handles
+# (boot_ok_seen / sram_pass_seen) and the UART bytes are printed by
+# tb_top.sv's own $display, so the trace is purely a debugging aid. Turn it on
+# deliberately, and when you do, cut TIMEOUT_NS right down to match.
+WAVES = os.getenv("WAVES") == "1"
+
+
 def main():
     sources, defines, includes = build_sources()
 
@@ -274,13 +301,13 @@ def main():
         parameters={"FLASH_INIT_FILE": f'"{flash_hex}"'},
         always=True,
         build_args=build_args(),
-        waves=True,
+        waves=WAVES,
     )
 
     runner.test(
         hdl_toplevel=hdl_toplevel,
         test_module="tb_top_tb",
-        waves=True,
+        waves=WAVES,
     )
 
 

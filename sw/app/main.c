@@ -28,13 +28,15 @@
 #define L2_IMAGE_BASE  0x1C000000u
 #define L2_TEST_END    0x1C003E00u
 
-/* Ticket 31: gate-level sim of the full SoC under Icarus runs at roughly
- * 5-6us of simulated time per real second (measured), so the full
+/* Ticket 31: gate-level sim of the full SoC under Icarus runs at 23.4us of
+ * simulated time per real second (measured with waveform dumping off; it was
+ * 5-6us with it on, which is what the earlier figure here recorded). This
+ * walk is already about 8 ms of the 28 ms a full run takes, so the full
  * [test_start, L2_TEST_END) range (~15 KiB, walked twice, byte by byte) would
- * take real hours to simulate. 512 B still crosses multiple word slots at
- * varying byte-lane positions -- enough to catch a byte-lane or depth-mux
- * bug -- without needing to walk the entire 16 KiB region. Revisit if this
- * ever needs to be a real coverage claim rather than a harness smoke test. */
+ * still be roughly half an hour of gate-level simulation. 512 B crosses
+ * multiple word slots at varying byte-lane positions -- enough to catch a
+ * byte-lane or depth-mux bug -- without paying that. Revisit if this ever
+ * needs to be a real coverage claim rather than a harness smoke test. */
 #define SRAM_TEST_BYTES 512u
 
 extern char _app_end[];
