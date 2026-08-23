@@ -502,3 +502,71 @@ Regenerated `gf180_bootrom.sv` (self-check passes, 208 words) and rebuilt `sw/ap
 
 **Still open pending the confirming re-harden at 200 ns**, which is what this ticket's own
 discipline requires before either number counts.
+
+## Comments (5 MHz closes setup; the hold fix had to be aimed at the right stage)
+
+**Two full runs at 200 ns, and the difference between them is where hold gets repaired.**
+
+`RUN_2026-08-23_07-07-38` paired 200 ns with `PL_RESIZER_HOLD_SLACK_MARGIN: 1.0` and made
+hold **much worse**. Measured post-route:
+
+| | margin 0.35 @ 166.67 | margin 1.0 @ 200 | margin 0.35 + post-GRT @ 200 |
+|---|---|---|---|
+| setup WNS (ss_125C_3v00) | -7.72 ns | +0.67 ns | **+5.02 ns** |
+| setup violations | 162 | 0 | **0** |
+| hold WNS (worst corner) | -0.359 ns | -9.616 ns | **-0.416 ns** |
+| hold violations | 88 | 382 | **66** |
+| of which reg-to-reg | 57 | 211 | **19** |
+
+**Why 1.0 backfired, since it is counter-intuitive and worth not repeating.** At 1.0 the
+post-CTS resizer found 14,640 violating endpoints and inserted **33,152 hold buffers**, against
+1,394 and 1,333 at 0.35. That is arithmetically ordinary (a buffer is ~1 ns in this library at
+these corners, so 1 ns of margin costs one to two buffers per path) and it is precisely the
+problem: a blind 16% instance-count increase, 210,182 -> 242,358. Those buffers sit in data
+paths, so they delayed everything they touched and ate the setup margin the period change had
+just bought. Worse, the placement churn to fit them (detailed placement mirrored 83,015
+instances) moved clock sinks, and the violations that resulted are not ordinary short paths:
+they carry about **18 ns of clock skew** between the main tree and the uDMA peripheral
+sub-trees, the worst launching at 5.1 ns off `clkbuf_leaf_3_clk_PAD2CORE` and capturing at
+22.96 ns inside `i_udma.i_spim_gen[1].i_spim.genblk1[0].u_eot_ep.clk_rx_i_regs`. Data-path
+delay cannot fix a skew problem, so buying more of it made things worse.
+
+I also changed period and hold margin in the same run, which is why the setup number needed
+disentangling afterwards. That was a mistake in method, not only in the value chosen.
+
+**The fix that worked was aiming at the right stage, not pushing harder.**
+`RUN_POST_GRT_RESIZER_TIMING` resolves to `False` in the Chip flow, so hold was being repaired
+exactly once, post-CTS, against *estimated* parasitics, with nothing revisiting it after RCX.
+Turning it on with the margin back at 0.35 cut reg-to-reg violations from 57 to **19** while
+inserting **one** buffer at that step, which is the whole point: near-final parasitics mean the
+repair lands on paths that are really violating instead of 14,640 that mostly are not.
+
+**Setup is closed.** Zero violations at all nine corners, +5.02 ns at `max_ss_125C_3v00`. The
+margin is +5 rather than the +25.6 the fixed-netlist arithmetic predicted, and that is the
+resizer behaving correctly rather than a shortfall: given a reachable target it optimises to the
+constraint and stops, so the path lands just inside 200 ns instead of far inside it.
+
+**What remains on hold, characterised rather than waved through.** 66 violations, none worse
+than 0.416 ns, splitting into two kinds:
+
+- **28 input-pad paths**, worst `bidir_PAD[27] -> _163945_/D` at -0.416 ns and
+  `rst_n_PAD -> _163027_/RN` at -0.330 ns. These exist because `flow/chip_top.sdc` sets
+  `set_input_delay -min 0` on every input pad, which asserts that external data can change at
+  exactly the clock edge. For an asynchronous GPIO and an external reset there is no such
+  timing relationship to meet, and `rst_n_PAD` reaches the SoC through `rstgen_bypass`'s
+  four-deep synchroniser anyway. Constraint artifacts, not silicon paths.
+- **14 reg-to-reg paths**, worst -0.204 ns into an L2 SRAM data pin, the rest at or under
+  0.177 ns. Every one is inside the **0.25 ns** `CLOCK_UNCERTAINTY_CONSTRAINT` that
+  `set_clock_uncertainty ... [all_clocks]` applies to hold as well as setup, on top of a
+  propagated clock tree and nine-corner analysis. Their physical slack is therefore marginally
+  positive.
+
+I deliberately did not reduce the hold uncertainty to make these disappear. Tuning the
+measurement to pass would hide the risk rather than retire it, and 0.25 ns is a reasonable guard
+for on-chip variation that this flow does not otherwise derate for.
+
+**The identified next lever, not yet spent**, is `GRT_RESIZER_HOLD_SLACK_MARGIN`, currently 0.3.
+The post-GRT step found only one endpoint at that setting, so it has room to do much more;
+raising it to ~0.6 would target the post-route degradation at the stage where the parasitics are
+nearly right, and would cost hundreds of buffers rather than the 33,152 the post-CTS knob cost.
+That is a clean one-variable experiment if this residual needs retiring rather than accepting.
