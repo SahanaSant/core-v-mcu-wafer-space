@@ -1,6 +1,8 @@
 # core-v-mcu-wafer-space
 
-Port of the [OpenHW CORE-V MCU](https://github.com/openhwgroup/core-v-mcu) to GlobalFoundries
+Nothing to see here...
+
+<!--Port of the [OpenHW CORE-V MCU](https://github.com/openhwgroup/core-v-mcu) to GlobalFoundries
 GF180MCU, for fabrication on a [wafer.space](https://wafer.space) shuttle slot using an
 open-source RTL-to-GDS flow.
 
@@ -174,4 +176,4 @@ upstream.
 ## Licence
 
 Apache-2.0 WITH SHL-2.1, matching upstream, so RTL moves between the two repositories without
-a licence change. See [LICENSE.md](LICENSE.md).
+a licence change. See [LICENSE.md](LICENSE.md).-->
