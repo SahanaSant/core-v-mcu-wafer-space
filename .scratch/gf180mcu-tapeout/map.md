@@ -6,6 +6,20 @@ A GDS of `chip_top` that passes `gf180mcu-precheck` for a 1x1 slot, with gate-le
 simulation showing the hardened netlist boots and prints over UART. Aimed at wafer.space
 Run 3, December 2026.
 
+**Reached, 2026-08-24.** `flow/final/gds/chip_top.gds` from `RUN_2026-08-24_02-03-47`
+passes all sixteen precheck stages ("Precheck successfully completed", slot `1x1`,
+KLayout DRC 738 rules all zero on the die-ID-stamped layout, Magic DRC 0, density,
+zero-area and antenna all clear). The same run closes setup and hold at all nine corners
+with zero violations, and LVS reports circuits matching uniquely with XOR at 0
+differences. `make sim-gl` boots that netlist from SPI flash and prints `BOOT OK` and
+`SRAM PASS` over UART at 28.2 ms of simulated time.
+
+Every ticket on this map is resolved except
+[13 Contribute the portable technology cells upstream](issues/13-upstream-contribution.md),
+which the Notes below hold past the destination on purpose. What the artifact does *not*
+carry is in **Not yet specified**, and the honest headline there is that max slew and max
+cap were never closed, only classified as deferred warnings outside precheck's scope.
+
 ## Notes
 
 Domain: open-source ASIC physical design. RTL is SystemVerilog (upstream CORE-V MCU,
@@ -630,6 +644,13 @@ signed ECA covering the commit author.
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its
 trigger resolves.
 
+**The destination is reached, so this section is now a list of what a *next* effort would pick
+up, not a route to anywhere on this map.** Three patches were cleared when their triggers
+resolved: the antenna-margin fix is verified (`antenna__violating__nets: 0`, and precheck's own
+antenna stage reports clear, so ticket 27's residual is closed); the gate-level harness exists
+and passes (ticket 31); and schedule viability is answered by the artifact existing at all, with
+ticket 29's post-route timing gap closed by configuration rather than microarchitecture.
+
 - **Global routing has real, unexplained run-to-run time variance on this design.** Ticket
   27's antenna re-verification attempts measured `OpenROAD.GlobalRouting` taking anywhere from
   1m05s to 4+ hours across four independently-placed samples, identical config each time,
@@ -640,95 +661,25 @@ trigger resolves.
   investigation if it keeps costing multi-hour waits on future runs; not chased further under
   ticket 27 since the DRC/density/LVS results that were the actual point already came back
   clean from a fast sample.
-- **Ticket 27's antenna-margin fix (`DRT_ANTENNA_REPAIR_MARGIN` 10%→25%) is applied but
-  unverified.** The 9 `ANT.16_i_ANT.4` violations it targets were confirmed real from one
-  complete run; whether the raised margin actually clears them to 0 was never confirmed by a
-  second complete run, abandoned after three attempts each cost hours to the routing-time
-  variance above. Graduates whenever a future run reaches the antenna deck again with this
-  config — read the result off `metrics.json`'s `klayout__antenna_error__count` rather than
-  re-deriving it.
-- **Gate-level simulation harness.** The four tests in `sim/README.md` are the shape of it,
-  but the harness cannot be written before the netlist exists. Graduates from the
-  technology-cell work. Ticket 16 fixed the simulator: the PDK's `icgtp` model is built on a
-  Verilog user-defined primitive, one of four in
-  `libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/primitives.v`, and carries a `specify` block with
-  `$setup`/`$hold`/`$width` checks. **Verilator supports neither, so it is out.** The container
-  ships Icarus Verilog 14.0, which handles both, and the harness will read
-  `gf180mcu_fd_sc_mcu7t5v0.v` and `primitives.v` from the PDK rather than compiling the netlist
-  standalone. Ticket 11 put a precondition on it, and ticket 20 cleared it without removing the
-  underlying gap: the SRAM model this harness will read,
-  `gf180mcu_ocd_ip_sram__sram1024x8m8wm1.v`, has a specify block that stays **2x optimistic on
-  access time** at 3.3 V, on purpose, because the only local data that would correct it is
-  itself corrupted. This no longer blocks writing the harness, but the harness carries the
-  caveat forward: a "boots and prints over UART" result from it demonstrates function, not that
-  real silicon meets the same margin, since `make sta`'s sign-off (which does carry a pessimistic
-  margin) never reads this file. Ticket 04 fixed the last unknown standing between the destination's "prints over UART"
-  and this harness: boot is SPI-flash, copy-then-jump, CRC32-checked, so the hello-world image
-  this harness boots is one more test image loaded exactly the way ticket 23's `sw/bootrom` loads
-  any other, not a special case. Whether it needs its own `sw/app` directory or lives alongside
-  the harness's other three tests is undecided and stays in this patch.
-- **Schedule viability.** Whether Run 3 in December is actually reachable, and what the
-  fallback is if it is not. Ticket 10 set the stakes at 97% occupancy; ticket 19's parameter set
-  brought that to 95.6%. **Ticket 12 changed the picture more than either did**: cutting
-  `apb_i2cs`, the uDMA filter and camera (measured, not estimated) dropped occupancy to
-  **76.4%**, 3.04 mm² free against 0.57 mm² before. The chip no longer looks area-critical, and
-  the remaining question is no longer "does it fit" so much as whether it places cleanly at 35%
-  density, which ticket 21 turned into a fixed 2x8 macro layout. **Ticket 25 ran it and the
-  answer is yes**: global placement lands at 40.9% overall and **25.9%** standard-cell
-  utilisation against the 35% target, with no need for a different target, and the sixteen
-  macros place at their computed coordinates with a clean power grid. Design repair then takes
-  standard cells to **43.5%** on 61,069 new buffers, which still fits. What ticket 12
-  did *not* touch is timing: **ticket 22 measured the design at 62.3 ns against the 50 ns
-  budget at 3.3 V, 125%**, with a trustworthy metric behind the number this time and a ruled-out
-  cheap fix (re-mapping at a tighter target changed nothing). Ticket 23 re-measured after adding
-  the boot ROM's real RTL: 62.2 ns, 124%, essentially unchanged. **Ticket 24 resolved the
-  mismatch that timing risk was actually sitting in**: the 50 ns figures above were all measured
-  against a clock target ticket 05 had already moved past (100 ns / 10 MHz, not 20 MHz), because
-  nothing existed to measure the real target against until `gf180_clk_gen.sv` did. Re-measured
-  against 100 ns: 77.4 ns, **77%** of budget at 3.3 V, with real margin for the first time. Read
-  that as the schedule question resolving, not as the logic having gotten faster — what remains
-  is whether that margin survives a real clock tree and wire RC, which only a first full harden
-  can answer. **Ticket 25 settled the density half and opened a new schedule risk in its
-  place.** The design places at 35% with headroom, so area is no longer the question. The
-  question is now the flow itself: `OpenROAD.CTS` crashes on this design about twenty-four
-  times in twenty-five and has to be retried, which makes every iteration through routing
-  expensive and unpredictable in a way nothing before this priced. **Ticket 26 confirmed the
-  crash is a genuine upstream OpenROAD defect (root-caused via live coredump, not just
-  hypothesised) and routed clean on the retry**: 0% global-route overflow, 0 DRC/antenna
-  violations from OpenROAD's own checker, negligible IR drop. Retrying costs time (~1-in-100
-  passes CTS) but is no longer a schedule unknown, it's a known, bounded tax. What replaces it
-  as the open schedule risk is what that same run surfaced past routing itself: 197 real
-  metal3 DRC violations from the first full-chip KLayout signoff pass (ticket 27), LVS never
-  having run at all (ticket 28), and post-route timing that does not close at the slow corner,
-  worst slack around -48 ns against the 100 ns budget and ~12,500 setup violations, a real gap
-  from the 77% idealized margin ticket 24 measured pre-layout (ticket 29). **Two of the three
-  turned out to be configuration fixes, not deeper design changes.** Ticket 27's metal3
-  violations were a floorplan/routing-obstruction fix, re-verified clean (0/738 DRC rules,
-  0 density) with one small residual (9 antenna violations, fix applied, re-verifying). Ticket
-  28's LVS passed clean on the first real run with no fix needed at all — the CDL gap it was
-  written to close didn't exist. What remains is ticket 29, the real unknown: whether the
-  post-route timing gap is closable by configuration or needs microarchitecture change is still
-  open.
-
-- **Whether boot should stay ROM-resident at all.** Raised 2026-08-21 after ticket 31 found
-  the boot ROM never issues a single SPI transaction in 100 ms and, separately, that nothing in
-  it can be tested without re-hardening, because `gen_bootrom.py` compiles the image into a case
-  statement that synthesis turns into gates. The suggestion on the table is to reverse ticket
-  04 and drop the ROM, booting from L2 filled over JTAG instead. Two things are already clear.
-  It cannot unblock anything now: removing the ROM is a design change, and every design change
-  reaches simulation only through a re-harden, which is exactly what
-  [the fanout ticket](issues/32-reduce-fanout-for-routability.md) is blocking. And it would be
-  a real testability win later, because the L2 SRAM macros keep their hierarchy through
-  synthesis (ticket 31's log prints full paths into them), so software living in L2 can be
-  backdoor-loaded into an *existing* netlist, while software living in the ROM can never be.
-  Against that it costs autonomous boot, making JTAG a single point of failure on silicon, and
-  it hides rather than answers whether the uDMA/QSPI path works at all. Boot ROM area is not a
-  factor either way: as a mux tree it is on the order of 1-2% of the design's 232,528 instances,
-  so it is not where the 64,734 emergency buffers come from. Not sharp enough to ticket while
-  the qspim failure is still undiagnosed, since the diagnosis decides whether SPI boot is even
-  available. Worth noting the middle option nobody has costed yet: keep the ROM but have it
-  check a strap pin and either SPI-boot or park for JTAG, which keeps autonomous boot and makes
-  most boot software testable.
+- **Max slew and max cap are not closed.** 457 and 291 violations respectively, at every
+  corner, carried through every run at similar counts. LibreLane defers them as *warnings*, not
+  errors, so they never blocked sign-off, and `gf180mcu-precheck` does not look at them at all.
+  They are left open knowingly rather than overlooked (ticket 29 records this). Before chasing
+  them, establish how many sit on macro pins: ticket 20 showed `gf180mcu_ocd_ip_sram`'s Liberty
+  is a foundry file with the header swapped, so transition and capacitance limits taken from it
+  describe a different macro, and tightening against those numbers would be optimising against
+  fiction. Sharpen into a ticket only after that split is measured.
+- **Whether boot should stay ROM-resident at all.** Raised 2026-08-21, and **its premise has
+  since changed**: the qspim failure that made it urgent is fixed, so the boot ROM now issues a
+  real SPI transaction sequence (four chip selects, 4,656 SCLK edges, CRC32 checked) and boots
+  the app in both RTL and gate-level simulation. The remaining argument is testability, not
+  function. Nothing in the ROM can be tested without re-hardening, because `gen_bootrom.py`
+  compiles the image into a case statement that synthesis turns into gates, whereas the L2 SRAM
+  macros keep their hierarchy through synthesis, so software living in L2 can be backdoor-loaded
+  into an *existing* netlist. Against that, dropping the ROM costs autonomous boot and makes
+  JTAG a single point of failure on silicon. The middle option still nobody has costed: keep the
+  ROM but have it check a strap pin and either SPI-boot or park for JTAG, which keeps autonomous
+  boot and makes most boot software testable. Boot ROM area is not a factor either way.
 
 ## Out of scope
 
