@@ -178,10 +178,24 @@ precheck-image: ## Build the wafer.space precheck container
 	  && $(ENGINE) build -t $(PRECHECK_IMAGE) $$tmp/precheck \
 	  && rm -rf $$tmp
 
+# precheck.py defaults --threads to "max", which resolves to os.cpu_count().
+# On this host that is 20, and KLayout's DRC holds per-thread copies of the
+# intermediate layers, so stage 14 grew to 9.15 GB resident against 17.7 GB of
+# virtual and the kernel OOM-killed it four hours in. Nothing was wrong with the
+# layout: the log records SIGKILL and the kernel records
+# `Out of memory: Killed process (.klayout-wrappe)`.
+#
+# One thread is the value with direct evidence behind it, because the harden
+# runs the byte-identical deck (`decks=all,-antenna,-density,-cup`) at
+# `threads=1` and completes in about four and a quarter hours. Raise it only
+# against measurement, and only with the machine otherwise idle.
+PRECHECK_THREADS ?= 1
+
 precheck: ## Check the final GDS against wafer.space submission rules
 	$(call require,$(FINAL_GDS),run `make harden` first)
 	@$(ENGINE) run --rm --network=none -v $(dir $(FINAL_GDS)):/data:z $(PRECHECK_IMAGE) \
-	  python precheck.py --input /data/$(TOP).gds --top $(TOP) --slot $(SLOT) --dir /data
+	  python precheck.py --input /data/$(TOP).gds --top $(TOP) --slot $(SLOT) --dir /data \
+	  --threads $(PRECHECK_THREADS)
 
 clean: ## Remove flow outputs (keeps the PDK)
 	@rm -rf $(ROOT)/flow/runs $(ROOT)/flow/final $(ROOT)/flow/build $(ROOT)/sim/sim_build
