@@ -610,6 +610,21 @@ signed ECA covering the commit author.
   Left open on purpose: max slew (457) and max cap (291), which LibreLane defers as warnings,
   many of them on macro pins whose Liberty ticket 20 showed is uncharacterised.
 
+- [30 Get make precheck to a clean pass](issues/30-run-precheck.md)
+  — **Passes, sixteen stages of sixteen, on the final GDS.** "Precheck successfully completed"
+  against `RUN_2026-08-24_02-03-47`'s 268.8 MB `chip_top.gds`: top-level name, slot `1x1`,
+  die-ID generation, render, density clear, zero-area polygons clear, antenna clear, Magic DRC
+  COUNT 0, and the full **KLayout deck at 738 rules every one zero** against the *ID-stamped*
+  layout, which the harden never checks. **This closes the map's destination.**
+  The attempt before it died at stage 14 after four hours with `Interrupted (SIGKILL)`, which
+  looked like a tool crash and was not: `dmesg` recorded `Out of memory: Killed process
+  (.klayout-wrappe)` at 9.15 GB resident. `precheck.py` defaults `--threads` to `"max"`, and
+  KLayout's DRC holds per-thread copies of the intermediate layers, so on this host that meant
+  20 copies. `PRECHECK_THREADS ?= 1` pins it, the value the harden already proves. On this
+  layout the 20-thread run had done 283 rules where the 1-thread run had done 615, so the
+  parallelism lost on **both** memory and speed. Carry forward: **a SIGKILL in a tool log
+  deserves a `dmesg` check before it is treated as a tool or design defect.**
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its

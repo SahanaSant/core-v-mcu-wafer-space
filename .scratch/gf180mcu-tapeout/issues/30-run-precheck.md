@@ -1,7 +1,7 @@
 # Get make precheck to a clean pass
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 27, 28 (both resolved), and [Close post-route timing at the slow corner](29-close-post-route-timing.md) for the final GDS, which is itself now blocked on [fanout](32-reduce-fanout-for-routability.md)
 
 ## Question
@@ -126,3 +126,67 @@ So the critical path was handed back to the harden.
 
 What this does **not** establish: that the full DRC deck passes on an
 ID-stamped layout. That is still open and is what the final run has to show.
+
+## Answer
+
+**`make precheck` passes, all sixteen stages, on the final GDS.**
+
+```
+[17:34:02] INFO  Precheck successfully completed.
+PrecheckFlow - Stage 16 - Write the Layout  16/16  5:37:59
+```
+
+Input was `flow/final/gds/chip_top.gds`, 268.8 MB, from
+`RUN_2026-08-24_02-03-47`, the run that closes setup and hold at all nine
+corners. Every stage:
+
+| stage | result |
+|---|---|
+| ReadLayout, CheckTopLevel | pass, `chip_top` |
+| CheckSize | pass, slot `1x1` |
+| GenerateID, Render | pass, `die_id FFFFFFFF` |
+| Density | clear |
+| ZeroAreaPolygons | clear |
+| Antenna | clear |
+| Magic DRC | COUNT: 0 |
+| **KLayout DRC** | **738 rules, every one zero** |
+| WriteLayout | pass |
+
+That last row is the one this ticket existed for, and it is the first time the
+full deck has run against the **die-ID-stamped** layout rather than the
+pre-stamp geometry the harden checks. The stamp introduces no violations.
+
+### The failure that came first, and why it was not the design
+
+The run before this one died at stage 14 after four hours and twelve minutes.
+The precheck log said only `Interrupted (SIGKILL)`, which reads like a tool
+crash. It was the kernel:
+
+```
+Out of memory: Killed process 2556885 (.klayout-wrappe)
+total-vm:17730676kB, anon-rss:9151644kB
+```
+
+`precheck.py` defaults `--threads` to `"max"`, which resolves to
+`os.cpu_count()`, 20 on this host. KLayout's DRC holds per-thread copies of the
+intermediate layers, so the thread count multiplies peak memory rather than
+buying throughput. `PRECHECK_THREADS ?= 1` in the Makefile pins it, chosen
+because the harden runs the byte-identical deck at `threads=1` and completes,
+so it is the setting with direct evidence rather than an interpolation.
+
+Two things worth keeping. The 20-thread run had executed 283 rules at the point
+where the 1-thread run had executed 615, so on this layout the parallelism was
+**losing** on both memory and speed. And a `SIGKILL` in a tool log is worth
+checking `dmesg` for before treating it as a tool or design defect; it took one
+kernel line to separate a resource limit from a real failure.
+
+### Standing trap this ticket confirmed
+
+`FINAL_GDS` resolves through `flow/final`, and `flow/final` is only refreshed by
+`sync-final`, which `make harden` chains **after** LibreLane and therefore skips
+whenever LibreLane exits non-zero on a deferred error. Run `make sync-final` by
+hand after any non-zero harden, or precheck silently grades the previous run.
+Precheck also writes its own `runs/` tree into `$(dir $(FINAL_GDS))`, so that
+directory accumulates output beside the GDS.
+
+Status: resolved.
