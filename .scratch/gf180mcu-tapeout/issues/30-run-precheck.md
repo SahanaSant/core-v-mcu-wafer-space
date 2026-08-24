@@ -69,3 +69,60 @@ Since this ticket's DoD needs precheck run against the *new* 6 MHz GDS once tick
 anyway, grinding this particular (10 MHz-era) dry run out further wasn't buying the number this
 ticket actually needs. Rerun `make precheck` fresh once `flow/final/gds/chip_top.gds` is the new
 6 MHz build.
+
+## Comments (thirteen of sixteen stages pass on a real GDS, and the fossil is explained)
+
+First run of `make precheck` against a GDS this effort actually produced, rather
+than against whatever `flow/final` happened to be holding. Input was
+`RUN_2026-08-23_09-43-11`'s `chip_top.gds`, 267 MB, the 200 ns / 5 MHz run.
+
+`PrecheckFlow` has sixteen stages. Thirteen passed:
+
+| stage | result |
+|---|---|
+| CheckTopLevel | pass, `chip_top` |
+| CheckSize | pass, slot `1x1` |
+| GenerateID | pass, `die_id FFFFFFFF` |
+| Render | pass |
+| Density | **clear** |
+| ZeroAreaPolygons | **clear** |
+| Antenna | **clear** |
+| Magic DRC | **COUNT: 0** |
+
+Stage 14, the KLayout DRC deck, was killed deliberately at 2h09m into it, and
+the run therefore reports a failure. That failure is mine, not the design's:
+the log shows `SignalException: SIGTERM`, nothing else. Reasoning for stopping
+it is in the next section.
+
+The reason this ticket's earlier attempt read as a "dry run against the
+10 MHz-era GDS" is now known and is not a precheck problem at all. `make harden`
+chains `sync-final` after LibreLane; LibreLane exits non-zero whenever any
+checker defers an error; a non-zero exit aborts the chain. So `flow/final` kept
+pointing at the previous run, and `FINAL_GDS` resolves through `flow/final`.
+Recorded in full on ticket 31 and on the map.
+
+One incidental finding worth keeping: precheck writes its run directory into
+`$(dir $(FINAL_GDS))`, which is `flow/final/gds/`, because that is what the
+Makefile mounts as `/data`. So precheck output accumulates *inside* the
+directory the next precheck will mount. `sync-final`'s `rm -rf` clears it, but
+anything reading `flow/final/gds/` should expect a `runs/` subdirectory beside
+the GDS rather than a lone file.
+
+## Comments (why stage 14 was stopped rather than waited out)
+
+The KLayout deck precheck runs is byte-identical to the one the harden already
+ran: `decks=all,-antenna,-density,-cup`, `variant=gf180mcuD`. The harden's own
+KLayout DRC on the same geometry reported **738 rules, every one zero**. The
+only real difference is the input, since precheck checks the layout after
+`GenerateID` has stamped a die identifier into it.
+
+Waiting it out would have cost roughly two more hours to re-validate geometry
+that had already passed, on a GDS that was about to be replaced by the hold-fix
+harden. A precheck against the *final* GDS is mandatory either way, and it will
+cover the ID-stamped question then. The purpose of running precheck before the
+harden was to catch a structural failure before spending seven hours on a
+route, and every structural check precheck uniquely offers had passed by then.
+So the critical path was handed back to the harden.
+
+What this does **not** establish: that the full DRC deck passes on an
+ID-stamped layout. That is still open and is what the final run has to show.
