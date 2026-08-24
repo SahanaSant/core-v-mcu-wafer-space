@@ -591,6 +591,25 @@ signed ECA covering the commit author.
   harden that exits non-zero, run `make sync-final` by hand before believing either target.
   Budget 23 minutes of wall clock per full gate-level boot, at 20,768 ns/s.
 
+- [29 Close post-route timing at the slow corner](issues/29-close-post-route-timing.md)
+  — **Closed, setup and hold, at all nine corners.** Setup +4.97 ns at `ss_125C_3v00`, hold
+  positive everywhere (+0.034 to +1.95 ns), zero violations of either kind, and the run carries
+  routing DRC 0, Magic DRC 0, KLayout DRC 738 rules all zero, LVS matching uniquely, XOR 0 and
+  no antenna violations. Setup closed by moving the clock to **5 MHz / 200 ns**, which was
+  arithmetic on a fixed netlist. Hold took three attempts and the failures are the lesson.
+  **Raising `PL_RESIZER_HOLD_SLACK_MARGIN` to 1.0 inserted 33,152 buffers and made hold ten
+  times worse**, because the post-CTS stage repairs against estimated parasitics and the churn
+  moves clock sinks; the same goal aimed at `RUN_POST_GRT_RESIZER_TIMING` instead cost **one**
+  buffer. What finished it was refusing to treat "66 violations" as one number: 28 were
+  fictitious checks on asynchronous pads that are synchronised in RTL, where
+  `set_input_delay -min 0` against a zero-delay clock network is unsatisfiable so the resizer
+  chased it forever (one pad carried eight series hold buffers and still missed), and 14 were
+  real reg-to-reg paths inside 0.204 ns. A `set_false_path -hold` and a margin bump retired
+  them separately. Carry two rules forward: **classify violations by startpoint before touching
+  any margin**, and **which stage a repair runs at matters more than how much margin it gets**.
+  Left open on purpose: max slew (457) and max cap (291), which LibreLane defers as warnings,
+  many of them on macro pins whose Liberty ticket 20 showed is uncharacterised.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Each patch graduates when the ticket named as its

@@ -1,7 +1,7 @@
 # Close post-route timing at the slow corner
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: none (was [Reduce broadcast fanout so detailed routing can converge](32-reduce-fanout-for-routability.md), resolved)
 
 ## Question
@@ -570,3 +570,80 @@ The post-GRT step found only one endpoint at that setting, so it has room to do 
 raising it to ~0.6 would target the post-route degradation at the stage where the parasitics are
 nearly right, and would cost hundreds of buffers rather than the 33,152 the post-CTS knob cost.
 That is a clean one-variable experiment if this residual needs retiring rather than accepting.
+
+## Answer
+
+**Timing closes at every one of the nine corners, setup and hold, in
+`RUN_2026-08-24_02-03-47`.** The run finished with no deferred errors at all,
+which is the first time that has happened on this design.
+
+| | run @ 166.67 ns | @ 200, margin 1.0 | @ 200, post-GRT 0.3 | **final** |
+|---|---|---|---|---|
+| setup WNS (`ss_125C_3v00`) | -7.72 ns | +0.67 ns | +5.02 ns | **+4.97 ns** |
+| setup violations | 162 | 0 | 0 | **0** |
+| hold WNS (worst corner) | -0.359 ns | -9.616 ns | -0.416 ns | **+0.034 ns** |
+| hold violations | 88 | 382 | 66 | **0** |
+| of which reg-to-reg | 57 | 211 | 19 | **0** |
+
+Worst hold slack is positive at all nine corners, from +0.034 ns at
+`max_ff_n40C_3v60` to +1.95 ns at `min_ss_125C_3v00`. Verified against the raw
+reports rather than the summary table: `min.rpt` at the worst corner is 32.6 MB
+and holds 2,254 paths, all 2,254 reporting `slack (MET)`.
+
+### What actually closed it
+
+Two things, and the sequence they were found in matters more than either.
+
+The clock target moved from 10 MHz to **5 MHz**, which is what closed setup.
+That was arithmetic on a fixed netlist, not a search.
+
+The hold residual then took three attempts, and the two failures are the
+instructive part. Raising `PL_RESIZER_HOLD_SLACK_MARGIN` to 1.0 inserted 33,152
+buffers across 14,640 endpoints and made hold **worse by an order of magnitude**,
+because the post-CTS stage repairs against estimated parasitics and the
+placement churn moved clock sinks. Reverting to 0.35 and enabling
+`RUN_POST_GRT_RESIZER_TIMING` instead cut reg-to-reg violations from 57 to 19
+while inserting a single buffer. Right goal, wrong stage, 33,151 buffers of
+difference.
+
+What finally worked came from splitting the surviving 66 violations by
+startpoint instead of treating them as one number. They were two unrelated
+problems:
+
+- **28 were fictitious.** `bidir_PAD` and `rst_n_PAD` are asynchronous to
+  `clk_PAD` and both are synchronised in RTL, `apb_gpio` through
+  `r_gpio_sync0`/`r_gpio_sync1`/`r_gpio_in` and `rst_n` through
+  `rstgen_bypass`'s `synch_regs_q` chain. A hold check there asserts precisely
+  what those synchronisers exist to make irrelevant. It was also expensive:
+  `set_input_delay -min 0` against a zero-delay clock network is unsatisfiable
+  at every corner, so the resizer chased it without bound and `bidir_PAD[27]`
+  ended up carrying **eight series hold buffers** while still missing by
+  0.416 ns. `set_false_path -hold` on those two ports, scoped to `-hold` so the
+  setup constraints are untouched.
+- **14 were real** and simply under-repaired, all inside 0.204 ns.
+  `GRT_RESIZER_HOLD_SLACK_MARGIN` 0.3 to 0.6 swept them up.
+
+Net cost 3,533 instances, 505,273 to 508,806, against the 33,152-buffer
+alternative that did not work.
+
+### Signoff state of the rest of the run
+
+Routing DRC 0, Magic DRC 0, KLayout DRC 738 rules all zero, LVS "Circuits match
+uniquely", XOR 0 differences, 0 antenna-violating nets and pins.
+
+### What is left open, deliberately
+
+Max slew (457) and max cap (291) violations remain, and LibreLane defers them as
+**warnings** rather than errors. They are not closed and this ticket does not
+claim they are. They have been present in every run at similar counts, they are
+not part of `gf180mcu-precheck`, and a good share of them will sit on macro pins
+whose Liberty data ticket 20 established is uncharacterised, so tightening
+against those numbers would be optimising against fiction. Worth a ticket of its
+own if the effort continues past this map; not worth blocking sign-off on.
+
+The clock uncertainty stayed at 0.25 ns throughout and was never reduced to make
+a violation disappear. The distinction held to was between declaring a design
+fact the tool cannot infer, which the false paths are, and relaxing the
+measurement, which was never done.
+
+Status: resolved.
