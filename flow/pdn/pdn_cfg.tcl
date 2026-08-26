@@ -204,7 +204,6 @@ add_pdn_connect \
 
 
 # The SRAM array's own grid. The template selects between a 3.3 V and a 5.0 V
-# SRAM file here on $::env(SRAM_DEFINE); this design has one memory (ticket 11,
-# gf180mcu_ocd_ip_sram) and one core rail (tickets 14, 21), so there is nothing
-# to select between and the file is sourced unconditionally.
+# SRAM file here on $::env(SRAM_DEFINE); this design has one memory and one
+# core rail, so the file is sourced unconditionally.
 source [file join [file dirname [info script]] "pdn_sram.tcl"]

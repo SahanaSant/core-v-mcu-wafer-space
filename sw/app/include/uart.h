@@ -3,7 +3,7 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * Minimal uDMA UART0 driver for the gate-level sim harness (ticket 31). The
+ * Minimal uDMA UART0 driver for the simulation harness. The
  * register layout and divisor formula come from core-v-mcu/a2_boot/uart.c
  * (upstream's own board driver), not written from scratch: only the polling
  * open/write shape survives, trimmed to what this app needs (no rx).

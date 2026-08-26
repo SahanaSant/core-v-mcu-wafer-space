@@ -2,7 +2,7 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Ticket 31's cocotb entry point. hdl_toplevel is sim/tb/tb_top.sv, not
+# The cocotb entry point. hdl_toplevel is sim/tb/tb_top.sv, not
 # chip_top directly -- see that file's header for why (cocotb can't reliably
 # bit-select an inout vector under Icarus, so the flash model, the UART
 # decode and the pass/fail latches all live in plain SV instead, and cocotb
@@ -11,7 +11,7 @@
 #
 # Reset/clock helpers are lifted from the wafer.space project template's
 # cocotb/chip_top_tb.py almost unchanged: this design's clk_PAD/rst_n_PAD
-# port names match the template exactly (ticket 25 kept them), so there was
+# port names match the template exactly, so there was
 # nothing design-specific to adapt there.
 
 import os
@@ -25,7 +25,7 @@ from cocotb_tools.runner import get_runner
 
 gl = os.getenv("GL", "0") == "1"
 
-# Icarus for gate-level, Verilator for RTL. Ticket 16 pinned GL to Icarus
+# Icarus for gate-level, Verilator for RTL. Gate level is pinned to Icarus
 # because the PDK's icgtp model is built on a Verilog user-defined primitive
 # and carries a specify block, and Verilator implements neither. That
 # constraint is specific to reading the PDK standard-cell library, and only
@@ -46,9 +46,9 @@ flash_hex = os.getenv("FLASH_HEX", str(Path(__file__).resolve().parent / "../../
 
 hdl_toplevel = "tb_top"
 
-# Ticket 05/24/29: clk_PAD is ref_clk_i bypassed undivided, i.e. periph_clk.
-# Ticket 29 moved this to 6 MHz and then to 5 MHz, the frequency at which
-# post-route STA closes at the slow corner. Keep in step with
+# clk_PAD is ref_clk_i bypassed undivided, i.e. periph_clk. 5 MHz is the
+# frequency at which post-route STA closes at the slow corner. Keep in step
+# with
 # flow/config.yaml's CLOCK_PERIOD and sw/app/main.c's APP_BAUD_HZ (which sets
 # tb_top.sv's CLKS_PER_BIT) if it changes again. 5 MHz also divides exactly:
 # the Clock() call below floors 1e9/CLK_HZ to an integer ns, which silently

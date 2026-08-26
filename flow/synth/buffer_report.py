@@ -3,9 +3,9 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Ticket 32: attribute the buffers a resizer step inserted back to the nets
-# they were inserted for, so "the design needs 64,734 emergency buffers" turns
-# into a named list of which signals cost what.
+# Attribute the buffers a resizer step inserted back to the nets they were
+# inserted for, so "the design needs 64,734 emergency buffers" turns into a
+# named list of which signals cost what. Diagnostic; no make target runs it.
 #
 # Give it two netlists from the same run, the one going into the step and the
 # one coming out, plus the standard-cell LEF:

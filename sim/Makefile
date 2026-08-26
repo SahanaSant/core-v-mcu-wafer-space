@@ -2,7 +2,7 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Ticket 31's gate-level (and RTL) sim harness. Invoked from the repo root as
+# The gate-level and RTL simulation harness. Invoked from the repo root as
 # `make sim` / `make sim-gl`, which run this inside the toolchain container
 # (root Makefile's RUN wrapper) with GL unset / GL=1.
 #
@@ -38,6 +38,6 @@ sources:
 gl-netlist:
 	@test -e $(ROOT)/flow/final/pnl/chip_top.pnl.v || { \
 	  echo "error: missing $(ROOT)/flow/final/pnl/chip_top.pnl.v"; \
-	  echo "       run \`make harden\` first (ticket 29's DoD)"; \
+	  echo "       run \`make harden\` first"; \
 	  exit 1; \
 	}

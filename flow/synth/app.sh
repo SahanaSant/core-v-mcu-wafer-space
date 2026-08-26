@@ -3,10 +3,9 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Build sw/app and turn it into the flash image sim/'s cocotb harness loads
-# into the GD25Q128B flash model (ticket 31). Mirrors flow/synth/bootrom.sh's
-# shape: regenerate the sw/inc headers this build needs, build, then report.
-# Runs inside the toolchain container.
+# Build sw/app and turn it into the flash image the cocotb harness loads into
+# the GD25Q128B flash model. Mirrors bootrom.sh's shape: regenerate the sw/inc
+# headers this build needs, build, then report.
 
 set -eu
 
@@ -17,9 +16,8 @@ BUILD="$ROOT/flow/build/app"
 
 mkdir -p "$CORE/sw/inc" "$BUILD"
 
-# udma_uart_reg_defs.h is the one header ticket 31 needs that no earlier
-# ticket generated (nothing in this repo touched UART registers from software
-# before this harness). soc-defines/periph-bus-defines/pin-table/perdef-json
+# udma_uart_reg_defs.h is the header this harness needs and nothing else
+# generates. soc-defines/periph-bus-defines/pin-table/perdef-json
 # and cvmcu-h are regenerated too, the same as bootrom.sh: deterministic from
 # gf180-pin-table.csv and perdef.json, so re-running this is a no-op unless
 # those changed, not a source of drift.

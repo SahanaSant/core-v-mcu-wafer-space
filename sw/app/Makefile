@@ -2,7 +2,7 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Builds ticket 31's app image: the payload sw/bootrom/main.c copies from
+# Builds the app image: the payload sw/bootrom/main.c copies from
 # flash and jumps to. Mirrors sw/bootrom/Makefile (same toolchain, same
 # -march), invoked by flow/synth/app.sh the way bootrom.sh drives
 # sw/bootrom/Makefile.

@@ -24,7 +24,7 @@
 // (CEN low for one cycle, high the next) is seen with CEN already high:
 // `write_flag` and `read_flag` are both zero, the write never happens and Q
 // holds its previous value. The memory reads back as all zeros forever, which
-// is exactly what ticket 31 spent a long time chasing. Back-to-back accesses
+// is a silent and expensive failure to debug. Back-to-back accesses
 // fare no better, being committed against the following transaction's address.
 //
 // rtl/gf180mcu/gf180_bootrom.sv already models the ROM macro this way, with a
@@ -35,8 +35,8 @@
 // holds its last value while CEN is high, per-bit active-low write enables
 // under an active-low global write enable, and memory zeroed at time zero.
 // What is deliberately dropped is the setup/hold/cycle-time checking, which is
-// only meaningful against annotated delays. Ticket 20 recorded that this
-// model's access time is 2x optimistic at 3.3 V in any case, so its checks were
+// only meaningful against annotated delays. This model's access time is 2x
+// optimistic at 3.3 V in any case, so its checks were
 // never load-bearing; `make sta` is what signs off memory timing.
 
 `timescale 1ps / 1ps

@@ -4,42 +4,34 @@
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 """Summarise the deepest pre-layout logic path, picked by depth, not by slack.
 
-Ticket 22: `report_checks -group_path_count 1` ranks by slack, which pre-layout
-means by raw arrival time. Every net has zero parasitics and nothing has been
-buffered, so arrival is dominated by whichever minimum-drive cell happens to
-drive a large net, not by how many gates the path passes through. Depth barely
-enters the ranking, and the path that wins it can flip identity by 2.4x under
-an RTL change that touches neither block: ticket 19 measured a 90-stage path
-inside the CV32E40P that lost the ranking to a 35-stage one by 13 ns of
-unbuffered fanout, on the same netlist a later change made win outright.
+`report_checks -group_path_count 1` ranks by slack, which pre-layout means by
+raw arrival time. Every net has zero parasitics and nothing has been buffered,
+so arrival is dominated by whichever minimum-drive cell happens to drive a
+large net, not by how many gates the path passes through. Depth barely enters
+the ranking, and the winner can flip identity by 2.4x under an RTL change that
+touches neither block.
 
-So `sta.sh` no longer asks for path #1. It asks OpenSTA for the N worst-slack
-candidates in one shot (`-group_path_count`, `-unique_paths_to_endpoint`,
-`-format json`) and this script reports whichever candidate has the most logic
-stages, not whichever ranked first. That is "the deepest path across N
-endpoints": cheap because OpenSTA enumerates paths internally rather than this
-script re-querying per endpoint, and far more stable, because the paths this
-design's unbuffered fanout puts at the top of the slack ranking differ from
-each other by single-digit nanoseconds, so the true deepest path is almost
-always inside the window even when it does not rank first. Measured
-convergence at N=50, 300 and 1000 candidates all found the same 90-ish stage
-path (see ticket 22's Answer); N defaults to 300, comfortably inside that
-margin without the query taking long. If the winning candidate sits near the
-end of the requested window, that margin may not hold and this script says so.
+So `sta.sh` asks OpenSTA for the N worst-slack candidates in one shot
+(`-group_path_count`, `-unique_paths_to_endpoint`, `-format json`) and this
+script reports whichever has the most logic stages. That is cheap, because
+OpenSTA enumerates paths internally rather than this script re-querying per
+endpoint, and far more stable, because the paths this design's unbuffered
+fanout puts at the top of the slack ranking differ by single-digit
+nanoseconds, so the true deepest path is almost always inside the window even
+when it does not rank first. N=50, 300 and 1000 all converge on the same path.
+If the winner sits near the end of the requested window that margin may not
+hold, and this script says so.
 
-Stage count is exact, not inferred from text formatting: it is the number of
-distinct cell instances OpenSTA's JSON path reports between the launching
-register and the capturing one, minus those two registers themselves, which
-are not logic stages.
+Stage count is exact rather than inferred from text formatting: it is the
+number of distinct cell instances in OpenSTA's JSON path between the launching
+and capturing registers, minus those two.
 
-The delay floor is still an approximation, for the reason ticket 19 already
-established: nothing has been placed or buffered, so a stage's own delay is
-real only when its net's fanout is small enough that the liberty is not
-extrapolating. Stages under 2 ns are "typical"; take their median and
+The delay floor is an approximation. Nothing has been placed or buffered, so a
+stage's delay is real only when its net's fanout is small enough that Liberty
+is not extrapolating. Stages under 2 ns are "typical"; take their median and
 multiply by the stage count for a floor. Real routing and a real clock tree
 only add to it.
 """
-
 import argparse
 import json
 import statistics

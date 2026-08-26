@@ -3,7 +3,7 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * GF180MCU boot ROM. Ticket 04's architecture: SPI-flash boot only, single
+ * GF180MCU boot ROM: SPI-flash boot only, single
  * SPI, CRC32-checked before jump, no bootsel fallback, JTAG-only recovery on
  * failure. This replaces upstream's a2_boot/main.c (bootsel-driven SPI/I2C
  * dual path) entirely rather than trimming it in place: the two are different
@@ -39,7 +39,7 @@
 #include "udma_qspi_driver.h"
 
 /* Conservative: boot-time throughput doesn't matter for a one-shot image
- * copy (ticket 04), so there's no reason to push the flash or the uDMA clock
+ * copy, so there's no reason to push the flash or the uDMA clock
  * divisor's rounding anywhere near their limits.
  */
 #define BOOT_SPI_CLK_HZ 2500000u
@@ -62,7 +62,7 @@ void __attribute__((noreturn)) boot_main(void)
 	size = header->size;
 	crc32 = header->crc32;
 
-	/* Ticket 31: round the transfer up to a whole number of 32-bit words.
+	/* Round the transfer up to a whole number of 32-bit words.
 	 * The receive channel runs at 32-bit datasize and udma_spim_txrx only
 	 * hands a word to the DMA once it has assembled four bytes, so a length
 	 * that is not a multiple of four leaves a tail of one to three bytes

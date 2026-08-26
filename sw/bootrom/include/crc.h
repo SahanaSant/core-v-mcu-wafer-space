@@ -8,7 +8,7 @@
  *
  * Notes:       Trimmed from core-v-mcu/a2_boot/include/crc.h, which carried
  *              CRC-CCITT, CRC-16 and CRC-32 all behind one #ifdef and defaulted
- *              to CRC-CCITT. Ticket 04 settled on CRC32, so this ROM only ever
+ *              to CRC-CCITT. This design uses CRC32, so the ROM only ever
  *              needs the one, and crcSlow() (bit-serial, no lookup table) is
  *              the only variant kept: a 256-entry crc32 table would be the
  *              single biggest thing in this ROM's .bss for a checksum that
@@ -34,7 +34,7 @@
  * where `unsigned long` happens to be 32 bits. A host build (checking this
  * file against the standard CRC-32 check value, or a future image-signing
  * tool) is a 64-bit `unsigned long` and silently computes a different, wider
- * CRC otherwise -- caught by running exactly that check during ticket 23.
+ * CRC otherwise -- caught by running exactly that check.
  */
 typedef uint32_t crc;
 

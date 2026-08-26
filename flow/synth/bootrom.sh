@@ -4,8 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
 # Build sw/bootrom, convert it to rtl/gf180mcu/gf180_bootrom.sv, and report the
-# real ROM size against ticket 04's 2 KiB estimate. Runs inside the toolchain
-# container; invoke it as `make bootrom`.
+# ROM size. Invoke it as `make bootrom`.
 
 set -eu
 
@@ -17,8 +16,8 @@ BUILD="$ROOT/flow/build/bootrom"
 mkdir -p "$CORE/sw/inc" "$BUILD"
 
 # The submodule's own `make sw` targets nexys-pin-table.csv, an FPGA board pin
-# table this GF180 port has no reason to track: ticket 06 already diverged
-# N_UART/N_GPIO/N_I2CM from what that table assumes, which is why `make sw`'s
+# table this GF180 port has no reason to track: this design's
+# N_UART/N_GPIO/N_I2CM diverge from what that table assumes, which is why `make sw`'s
 # default recipe throws a KeyError on PERIO_UART1_TX today. gf180-pin-table.csv
 # is this chip's own pin table, so headers are regenerated against it directly
 # rather than depending on that recipe. --peripheral-defines is left off: it's
@@ -58,11 +57,10 @@ echo "==> ROM size"
 riscv64-unknown-elf-size "$BUILD/bootrom.elf"
 wc -c "$BUILD/bootrom.bin"
 
-# ROM <-> compiled-binary equivalence check under Icarus (ticket 16 pinned it
-# for every gate-level check here: the PDK's icgtp model needs a UDP-capable
-# simulator). Proves the generated case statement is a lossless, correctly-
-# timed encoding of the image, not that the CPU actually boots it -- see
-# tb/bootrom_tb.sv's header for why that's a separate, larger piece of work.
+# ROM <-> compiled-binary equivalence check under Icarus, which every
+# gate-level check here uses because the PDK's icgtp model needs a UDP-capable
+# simulator. This proves the generated case statement is a lossless,
+# correctly-timed encoding of the image, not that the CPU boots it.
 echo
 echo "==> simulating gf180_bootrom.sv against the compiled image (Icarus)"
 cd "$ROOT"

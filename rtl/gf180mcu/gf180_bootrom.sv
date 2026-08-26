@@ -19,7 +19,7 @@
 // upstream's own a2_boot/srec2verilog.py already used to turn an .srec into
 // Verilog for the original a2_bootrom.sv.
 //
-// Built: 2026-08-23, 208 words, 832 bytes (ticket 04 estimated 2 KiB).
+// Built: 2026-08-25, 208 words, 832 bytes.
 
 module a2_bootrom #(
     parameter int unsigned ADDR_WIDTH = 11,

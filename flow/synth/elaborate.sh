@@ -3,12 +3,9 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Elaborate the CORE-V MCU SoC for the GF180MCU target and report what is
-# missing. Runs inside the toolchain container; invoke it as `make elaborate`.
-#
-# This is the cheap check: it stops at elaboration, so it answers "does the RTL
-# still read, and what modules are still unwritten" in seconds. `area.sh` takes
-# the same file list all the way through technology mapping.
+# Elaborate the SoC and report any module it instantiates but does not define.
+# The cheap check: seconds, and it answers "does the RTL still read". Invoke it
+# as `make elaborate`.
 
 set -eu
 
@@ -17,11 +14,6 @@ set -eu
 gf180_liberty
 gf180_filelist
 
-# `read_liberty -lib` comes first so the PDK cells exist as yosys modules before
-# slang runs. rtl/gf180mcu/gf180_clk_gate.sv instantiates three standard cells by
-# name and gf180_l2_ram.sv instantiates the SRAM macro, and slang imports an
-# instance as a black box only when a previous yosys command loaded the module;
-# without this it stops on an unknown module instead.
 READ_LIBS=$(for l in $LIBS; do echo "    read_liberty -lib $l"; done)
 
 echo "==> elaborating $TOP with yosys-slang"
@@ -33,8 +25,8 @@ $READ_LIBS
     stat -top $TOP
 " >/dev/null
 
-# The per-instance hierarchy runs to thousands of lines with --keep-hierarchy;
-# print only the roll-up, which ends with one line per unresolved module.
+# The per-instance hierarchy runs to thousands of lines under --keep-hierarchy.
+# Print only the roll-up, which ends with one line per unresolved module.
 echo
 echo "==> $TOP, counting submodules"
 awk '/\+----------Count including submodules/ {buf = ""}

@@ -3,7 +3,7 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * Linker script for ticket 31's app image. sw/bootrom/main.c copies this
+ * Linker script for the app image. sw/bootrom/main.c copies this
  * image to L2_IMAGE_BASE and jumps straight to its first byte (no reset
  * vector table, see crt0.S), so .text has to lead and crt0.o has to be the
  * first object on the link line for _start to land there (enforced by

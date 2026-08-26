@@ -7,11 +7,11 @@
 // instance names, the generate-loop shapes and the marker-cell block come from.
 // Three deliberate differences from the template, each with a reason:
 //
-//  1. No `gf180mcu_xxx_io__*` indirection. Ticket 18 fixed the ring at
-//     `gf180mcu_ocd_io` (5.0 V over a 3.3 V core, level shifter inside each pad
-//     cell), and the foundry `gf180mcu_fd_io` alternative the template carries
-//     is not buildable here at all, since it has no core-supply pad and shorts
-//     the two domains on purpose. Cells are named directly, the way
+//  1. No `gf180mcu_xxx_io__*` indirection. The ring is `gf180mcu_ocd_io`
+//     (5.0 V over a 3.3 V core, level shifter inside each pad cell), and the
+//     foundry `gf180mcu_fd_io` alternative the template carries is not
+//     buildable here at all, since it has no core-supply pad and shorts the
+//     two domains on purpose. Cells are named directly, the way
 //     `rtl/gf180mcu/gf180_clk_gate.sv` names standard cells.
 //  2. No `slot_defines.svh`. The design does not fit in anything smaller than
 //     the 1x1 slot, so there is one pad count per parameter and no slot switch.
@@ -19,25 +19,24 @@
 //     `jtag_tdo_o` gets an output-capable pad beside the rest of JTAG. See the
 //     pad budget note below.
 //
-// Pad budget (ticket 06 assigned the functions; ticket 25 assigned the pads).
-// The 1x1 slot is 40 bidirectional, 14 input-only and 2 analog. The template's
+// Pad budget. The 1x1 slot is 40 bidirectional, 14 input-only and 2 analog. The template's
 // README is explicit that the *count* and *position* of every pad is what the
 // default bonding setup and the breakout PCB are drawn against, and that only a
-// signal pad's type may change. So all 58 positions below are the template's,
-// unmoved, and the only edit is one type:
+// signal pad's type may change. So all 56 signal positions below are the
+// template's, unmoved, and the only edit is one type:
 //
 //    40 x bi_24t   io_in_i/io_out_o/io_oe_o[39:0], all forty bonded, which
-//                  keeps ticket 06's spare at io_num 39 a genuine spare.
+//                  keeps the spare at io_num 39 a genuine spare.
 //     1 x in_s     ref_clk_i, Schmitt trigger because it is a clock input.
 //     1 x in_c     rstn_i.
 //     1 x bi_24t   jtag_tdo_o. This is the template's `inputs[11]` position,
 //                  retyped: `jtag_tdo_o` is the only signal outside the io
 //                  array that drives, and `in_c`/`in_s` have no output driver.
 //                  Spending a bidirectional pad from the io array instead would
-//                  have cost ticket 06's spare for no gain.
+//                  have cost that spare for no gain.
 //    11 x in_c     jtag_tck/tms/tdi/trst and stm_i, then six spares.
-//     2 x asig_5p0 unused. Nothing in this design is analog (ticket 05 dropped
-//                  the PLL's analog ports), but the positions are part of the
+//     2 x asig_5p0 unused. Nothing in this design is analog, since there is no
+//                  PLL, but the positions are part of the
 //                  bonding setup, so the pads stay and the ports float.
 //
 // The five JTAG signals sit in one contiguous run on the west edge, immediately
@@ -47,10 +46,10 @@
 `default_nettype none
 
 module chip_top #(
-    // I/O-domain power pads: 5.0 V ring (ticket 18).
+    // I/O-domain power pads: 5.0 V ring.
     parameter int NUM_DVDD_PADS   = 6,
     parameter int NUM_DVSS_PADS   = 8,
-    // Core-domain power pads: 3.3 V single rail (tickets 14, 21).
+    // Core-domain power pads: 3.3 V single rail.
     parameter int NUM_VDD_PADS    = 2,
     parameter int NUM_VSS_PADS    = 2,
     // Signal pads.
@@ -99,7 +98,7 @@ module chip_top #(
 
   // Power and ground pad instances. `gf180mcu_ocd_io__vdd`/`__vss` bond the
   // core rail with DVDD and DVSS explicitly unconnected, which is the whole
-  // reason ticket 18 could split the ring at all: the foundry library has no
+  // reason the ring can be split at all: the foundry library has no
   // core-supply pad cell.
   generate
     for (genvar i = 0; i < NUM_DVDD_PADS; i++) begin : dvdd_pads
@@ -146,7 +145,7 @@ module chip_top #(
 
   // Reference clock. Schmitt trigger, because a board-level oscillator arriving
   // over a wire bond is the one input whose edge quality is not this chip's to
-  // control (ticket 05: there is no PLL and no on-die oscillator).
+  // control. There is no PLL and no on-die oscillator.
   gf180mcu_ocd_io__in_s clk_pad (
 `ifdef USE_POWER_PINS
       .DVDD(DVDD),
@@ -160,8 +159,8 @@ module chip_top #(
       .PD (1'b0)
   );
 
-  // Reset. Active low, and there is no on-die power-on reset or debounce
-  // (ticket 05 assumes an external supervisor), so it is pulled down here: an
+  // Reset. Active low, and there is no on-die power-on reset or debounce (an
+  // external supervisor is assumed), so it is pulled down here: an
   // unbonded or floating reset holds the chip in reset rather than releasing it
   // into an undefined state.
   gf180mcu_ocd_io__in_c rst_n_pad (
@@ -217,7 +216,7 @@ module chip_top #(
     end
   endgenerate
 
-  // The io array. Everything that ever drives out lives here (ticket 06), and
+  // The io array. Everything that ever drives out lives here, and
   // the five configuration pins are software-controlled through
   // `apb_soc_ctrl`'s pad configuration register; `chip_core.sv` owns the bit
   // mapping.
@@ -295,7 +294,7 @@ module chip_top #(
 
   // Do not remove, necessary for tapeout. wafer.space replaces the placeholder
   // GDS in `ip/` with the real cells at submission; each must appear exactly
-  // once, which is what `rtl/chip/README.md` records the precheck as enforcing.
+  // once, which the precheck enforces.
   (* keep *) gf180mcu_ws_ip__qrcode_id qrcode_id ();
   (* keep *) gf180mcu_ws_ip__shuttle_id shuttle_id ();
   (* keep *) gf180mcu_ws_ip__project_id project_id ();

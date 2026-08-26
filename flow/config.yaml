@@ -4,9 +4,9 @@
 #
 # LibreLane configuration for hardening chip_top. Seeded from
 # librelane/config.yaml in the gf180mcu project template (Apache-2.0, (c) 2025
-# Project Template Contributors) and diffed against it, per the map's Notes:
-# the template's defaults encode Run 1 and Run 2 experience, so a setting that
-# differs from it below carries a reason.
+# Project Template Contributors). The template's defaults encode Run 1 and Run
+# 2 shuttle experience, so every setting that differs from it carries a reason
+# below. Background: docs/reference/flow.md.
 #
 # `make harden` passes four files, in this order:
 #
@@ -24,11 +24,10 @@ meta:
   flow: Chip
   substituting_steps:
 
-    # Verilator cannot read this design. Upstream's RTL is SystemVerilog with
-    # interfaces, packages and packed structs across more than fifty files, and
-    # ticket 03 settled the front end on yosys-slang for exactly that reason.
-    # Linting with a front end that cannot elaborate the design would report its
-    # own limitations, not the design's.
+    # Verilator cannot read this design: upstream's RTL is SystemVerilog with
+    # interfaces, packages and packed structs across more than fifty files,
+    # which is why the front end is yosys-slang. Linting with a front end that
+    # cannot elaborate the design would report its own limitations.
     Verilator.Lint: null
     Checker.LintTimingConstructs: null
     Checker.LintErrors: null
@@ -44,10 +43,10 @@ DESIGN_NAME: chip_top
 # which flow/synth/sources.sh regenerates from fusesoc on every `make harden`.
 # Nothing here should set them; the file list has exactly one source of truth.
 
-# Ticket 03: yosys-slang reads the whole SoC. `--keep-hierarchy` is slang's own
-# flag and is unrelated to SYNTH_HIERARCHY_MODE, which stays at its "flatten"
-# default because flow/README.md's "Synthesis must flatten" section makes
-# flattening worth 1.30 mm2 of cell area rather than a preference.
+# `--keep-hierarchy` is slang's own flag and is unrelated to
+# SYNTH_HIERARCHY_MODE, which stays at its "flatten" default: flattening is
+# worth 1.30 mm2 of cell area here, not a preference. See
+# docs/reference/flow.md.
 USE_SLANG: True
 SLANG_ARGUMENTS: ['--keep-hierarchy']
 
@@ -57,12 +56,11 @@ SLANG_ARGUMENTS: ['--keep-hierarchy']
 VERILOG_DEFINES: ["SYNTHESIS"]
 
 # `dfflibmap` maps flip-flops only, and upstream's apb_soc_ctrl infers two
-# latches (`reset_reason[1:0]`; ticket 06's `bootsel` removal took the other two
-# with it). The PDK ships the map for this library and points SYNTH_LATCH_MAP at
-# it, but LibreLane's gf180mcu compatibility shim deletes that key from the PDK
-# configuration on the way in (config/pdk_compat.py), so without this line the
-# netlist carries two unmapped `$_DLATCH_P_` cells and the Unmapped Cells
-# Checker stops the flow after synthesis.
+# latches (`reset_reason[1:0]`). The PDK ships the map and points
+# SYNTH_LATCH_MAP at it, but LibreLane's gf180mcu compatibility shim deletes
+# that key from the PDK configuration on the way in (config/pdk_compat.py), so
+# without this line the netlist carries unmapped `$_DLATCH_P_` cells and
+# Checker.YosysUnmappedCells stops the flow.
 SYNTH_LATCH_MAP: pdk_dir::libs.tech/librelane/gf180mcu_fd_sc_mcu7t5v0/latch_map.v
 
 # Slightly smaller file sizes
@@ -73,8 +71,8 @@ PNR_SDC_FILE: dir::chip_top.sdc
 SIGNOFF_SDC_FILE: dir::chip_top.sdc
 FALLBACK_SDC: dir::chip_top.sdc
 
-# Power / ground nets. One core rail at 3.3 V (tickets 14, 21); the 5.0 V ring
-# is the pads' own DVDD/DVSS and never reaches the core grid.
+# Power / ground nets. One core rail at 3.3 V; the 5.0 V ring is the pads' own
+# DVDD/DVSS and never reaches the core grid.
 VDD_NETS:
 - VDD
 GND_NETS:
@@ -82,21 +80,23 @@ GND_NETS:
 
 # --- 3.3 V core corner ------------------------------------------------------
 #
-# The PDK's own libs.tech/librelane/config.tcl defaults to 5.0 V, and ticket 14
-# settled the core at 3.3 V. Three settings have to move together and nothing
-# warns you if one is missed. The library does not change: gf180mcu_fd_sc_mcu7t5v0
-# carries all 229 cells at every one of its fifteen corners with identical
-# geometry, so the `5v0` is the oxide and this costs no area.
+# The PDK's own libs.tech/librelane/config.tcl defaults to 5.0 V; the core here
+# runs at 3.3 V. Three settings have to move together (CELL_LIBS, STA_CORNERS,
+# DEFAULT_CORNER) and nothing warns you if one is missed. The library does not
+# change: gf180mcu_fd_sc_mcu7t5v0 carries all 229 cells at every one of its
+# fifteen corners with identical geometry, so `5v0` is the oxide and this costs
+# no area.
 #
-# Three, not the four flow/README.md used to list: `VDD_PIN_VOLTAGE` is a
-# *removed* variable in LibreLane 3.1 ("Information should be obtained from
-# dotlib files", config/removals.py), and setting it here was accepted and
-# silently discarded, never reaching resolved.json. The supply now follows from
-# which liberty files CELL_LIBS names, which is what the three below decide.
+# Three settings, not four. `VDD_PIN_VOLTAGE` is a *removed* variable in
+# LibreLane 3.1 ("Information should be obtained from dotlib files",
+# config/removals.py): setting it is accepted and silently discarded, never
+# reaching resolved.json. The supply follows from which Liberty files CELL_LIBS
+# names. Check resolved.json rather than the config when a corner override
+# looks like it did not take.
 #
-# The library name is written out rather than taken from `--scl`, because ticket
-# 16 made the SCL override non-functional anyway: rtl/gf180mcu/gf180_clk_gate.sv
-# instantiates three cells from this library by name.
+# The library name is written out rather than taken from `--scl`, because
+# rtl/gf180mcu/gf180_clk_gate.sv instantiates cells from it by name, which
+# makes the override non-functional anyway.
 CELL_LIBS:
   "*_tt_025C_3v30":
   - pdk_dir::libs.ref/gf180mcu_fd_sc_mcu7t5v0/lib/gf180mcu_fd_sc_mcu7t5v0__tt_025C_3v30.lib
@@ -118,179 +118,103 @@ STA_CORNERS:
 
 DEFAULT_CORNER: nom_tt_025C_3v30
 
-# The pad ring is not this rail. Ticket 18 put 5.0 V over the 3.3 V core with
-# the level shifter inside each `gf180mcu_ocd_io` pad cell, but the PDK's pad
-# configuration maps these 3.3 V corner names onto the pad library's 3v30/3v63/
-# 2v97 files, so the pads are characterised at the core supply rather than at
-# the 5.0 V they will run at. That is pessimistic on the output driver and is
-# left that way on purpose.
+# The pad ring is not this rail: it runs at 5.0 V, level-shifted inside each
+# `gf180mcu_ocd_io` cell. The PDK's pad configuration maps these 3.3 V corner
+# names onto the pad library's 3v30/3v63/2v97 files, so the pads are
+# characterised at the core supply rather than the 5.0 V they will run at. That
+# is pessimistic on the output driver and is left that way on purpose.
 
 # --- Clock ------------------------------------------------------------------
 #
-# 200 ns / 5 MHz, ticket 29's final target. The history is three measurements,
-# each one a real post-route STA at ss_125C_3v00, not an estimate:
+# 200 ns / 5 MHz. Three measured post-route STA results at ss_125C_3v00, not
+# estimates:
 #
-#   100 ns  (ticket 05)  WNS -28.59 ns   9,127 violations
-#   166.67  (ticket 29)  WNS  -7.72 ns     162 violations
-#   200 ns  (ticket 29)  WNS +25.61 ns       0 violations
+#   100 ns     WNS -28.59 ns   9,127 violations
+#   166.67 ns  WNS  -7.72 ns     162 violations
+#   200 ns     WNS +25.61 ns       0 violations
 #
-# The 100 -> 166.67 step is described below and did most of the work. What it
-# did not do was close: RUN_2026-08-22_23-39-37 still reported -7.72 ns, and
-# every one of its 162 remaining violations launches from the *same* flop,
-# `instr_rdata_i[17]` in the CV32E40P decoder, fanning out to 162 endpoints.
+# Every violation at 166.67 ns launches from one flop, `instr_rdata_i[17]` in
+# the CV32E40P decoder, fanning out to 162 endpoints across the die into the
+# AXI crossbar arbiter: 176 stages, 169.6 ns of data path, split almost exactly
+# half between real logic and resizer repair buffers. It is structural, and
+# closing it at 6 MHz would mean pipelining the decode-to-interconnect request
+# path, which is new microarchitecture. Full story:
+# docs/explanation/timing.md.
 #
-# That path is worth understanding before accepting the frequency, because it
-# is structural and no amount of resizer effort removes it. It runs from the
-# decoder, through the ID stage's controller, and across the die into the SoC
-# interconnect's AXI crossbar arbiter: 176 stages, 169.6 ns of data path.
-# Attributing that delay by cell class splits it almost exactly in half,
-# 85.4 ns across 71 real logic stages and 84.2 ns across 80 resizer repair
-# buffers (46 `wire*`, 26 `load_slew*`, 5 `fanout*`, 3 `max_cap*`), which
-# averages 1.05 ns per buffer. The buffers are not waste: the path is
-# physically long, and a long wire at 3.0 V and 125 C genuinely needs them.
-# Closing this at 6 MHz would mean pipelining the decode-to-interconnect
-# request path, which is new microarchitecture and off this map (ticket 22).
-#
-# The third number is arithmetic on a fixed netlist rather than a fresh run,
-# and it is exact for that reason: arrival time is a property of the routed
-# netlist (188.56 ns), and only the required time moves with the period, so
-# +33.33 ns of period is +33.33 ns of slack. A re-harden at 200 ns can only
-# improve on it, because the resizer chases a reachable target and inserts
-# fewer buffers.
-#
-# 5 MHz costs nothing that this map is trying to buy. The clock is external,
-# so the frequency is a crystal choice on the bring-up board and was never
-# burned into silicon, which is the same reasoning ticket 05 used to pick
-# 10 MHz. 5 MHz is at least as ordinary a crystal to source, and it divides
-# more cleanly: 1_000_000_000 / 5e6 is exactly 200 ns, where 6 MHz left the
-# cocotb driver truncating 166.67 to 166.
-#
-# Ticket 29's earlier reasoning for 166.67, still true and still the reason
-# the 100 ns target had to go:
-# Ticket 26's routed design measured a real critical path of about 128.6 ns at
-# the slow corner, 29% over the 100 ns budget, and OpenROAD's own resizer could
-# not repair that with buffering alone ([RSZ-0062] against every one of its
-# 6,274 violating endpoints). This also fixed most of the runtime this design's
-# resizer steps were burning: RepairDesignPostGPL and ResizerTimingPostCTS were
-# each spending tens of minutes (and inserting ~65,000 buffers) chasing an
-# unreachable target on every single endpoint before giving up anyway.
+# The clock is external, so the frequency is a crystal choice on the bring-up
+# board rather than anything burned into silicon. 5 MHz also divides cleanly:
+# 200 ns exactly, where 6 MHz left the cocotb driver truncating 166.67 to 166.
 #
 # Four things track this number and must change with it: sw/bootrom/spi.c's
 # PERIPH_CLK_HZ, sw/app/uart.c's PERIPH_CLK_HZ, sim/cocotb/tb_top_tb.py's
-# CLK_HZ, and sim/tb/tb_top.sv's CLKS_PER_BIT (which is the integer
-# PERIPH_CLK_HZ/115200 the UART divider actually lands on, 43 at 5 MHz). The clock is defined on the pad cell's core-side output
-# rather than the bond pad. The JTAG clock and the /40 divided clock are
-# declared in flow/chip_top.sdc, which this cannot express.
+# CLK_HZ, and sim/tb/tb_top.sv's CLKS_PER_BIT (the integer
+# PERIPH_CLK_HZ/115200 the UART divider lands on, 43 at 5 MHz).
+#
+# The clock is defined on the pad cell's core-side output rather than the bond
+# pad. The JTAG clock is declared in flow/chip_top.sdc, which this cannot
+# express.
 CLOCK_PORT: clk_PAD
 CLOCK_NET: clk_pad/Y
 CLOCK_PERIOD: 200
 
 # --- Placement and routing --------------------------------------------------
 
-# Overfix hold violations, because 180 nm hold fixing is cheap and a hold
-# failure is not repairable after fabrication.
+# Overfix hold, because 180 nm hold fixing is cheap and a hold failure is not
+# repairable after fabrication. 0.35 is the template's value and it stays.
 #
-# Ticket 29 raised this from the template's 0.35 after measuring what actually
-# survives to post-route. Two facts drive the number.
+# **1.0 was tried here and made hold dramatically worse. Do not raise this
+# without reading why.** At 1.0 the post-CTS resizer found 14,640 violating
+# endpoints and inserted 33,152 hold buffers, against 1,394 and 1,333 at 0.35.
+# Post-route at ss_125C_3v00 that moved hold WNS from -0.359 ns to -9.616 ns
+# and ate nearly the whole setup margin the 200 ns period had just bought
+# (+25.6 -> +0.67). The added buffers sit in data paths, and the placement
+# churn needed to fit them moved clock sinks: the surviving violations are not
+# short paths but paths with ~18 ns of skew between the main tree and the uDMA
+# sub-trees. No amount of data-path delay fixes a skew problem.
 #
-# First, this flow fixed hold exactly once, and it did it early. The Chip
-# flow resolves RUN_POST_GRT_RESIZER_TIMING to False by default, so there was
-# no ResizerTimingPostGRT step at all and hold repair happened only in
-# ResizerTimingPostCTS, against *estimated* parasitics, with nothing revisiting
-# it once RCX had extracted the real ones. That is no longer the case: the step
-# is switched on below, and GRT_RESIZER_HOLD_SLACK_MARGIN is live config. The
-# diagnosis in the rest of this block is what led there, so it is kept, but
-# read it as the reason for the fix rather than a description of the flow.
-#
-# Second, the gap between estimated and extracted is measurable.
-# RUN_2026-08-22_23-39-37 fixed hold to +0.35 ns post-CTS (1,394 endpoints,
-# 1,333 buffers) and still ended with 69 violations at max_ff_n40C_3v60:
-# 57 reg-to-reg at worst -0.140 ns, and 12 input-pad-to-register at worst
-# -0.359 ns. So extraction cost up to 0.35 + 0.36 = 0.71 ns of hold slack.
-#
-# **1.0 ns was tried here and made hold dramatically worse. Do not raise this
-# number again without reading why.** RUN_2026-08-23_07-07-38 ran the whole
-# flow at 200 ns with this at 1.0 and measured, post-route at ss_125C_3v00:
-#
-#                     margin 0.35        margin 1.0
-#   hold WNS          -0.359 ns          -9.616 ns
-#   hold violations   88                 382
-#   setup WNS         (+25.6 predicted)  +0.666 ns
-#
-# Both columns moved the wrong way, for one reason: at 1.0 the post-CTS
-# resizer found 14,640 violating endpoints and inserted **33,152 hold
-# buffers**, against 1,394 and 1,333 at 0.35. That is arithmetically
-# unsurprising (a buffer is about 1 ns in this library at these corners, so a
-# 1 ns margin costs one to two buffers per path) and it is exactly the
-# problem: it is a 16% instance-count increase, 210,182 -> 242,358, applied
-# blind across the design.
-#
-# What it cost. The added buffers sit in data paths, so they also delayed
-# every path they touched and ate essentially the whole setup margin the
-# 200 ns period had just bought, +25.6 -> +0.67. And the placement churn
-# needed to fit them (detailed placement mirrored 83,015 instances) moved
-# clock sinks, which is what actually broke hold: the surviving violations
-# are not ordinary short paths, they are paths with about **18 ns of clock
-# skew** between the main tree and the uDMA peripheral sub-trees. The worst
-# one launches at 5.1 ns off clkbuf_leaf_3_clk_PAD2CORE and captures at
-# 22.96 ns inside
-# i_udma.i_spim_gen[1].i_spim.genblk1[0].u_eot_ep.clk_rx_i_regs. No amount of
-# data-path delay fixes a skew problem, which is why buying more of it made
-# things worse rather than better.
-#
-# So this stays at the template's 0.35, the value with the most evidence
-# behind it, and the residual is fixed at the right stage instead. See
-# RUN_POST_GRT_RESIZER_TIMING below.
+# The residual is repaired at the right stage instead, after global routing.
+# See RUN_POST_GRT_RESIZER_TIMING below and docs/explanation/timing.md.
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
 
-# Turn the post-global-routing resizer on, which this flow leaves off.
+# Turn the post-global-routing resizer on, which the Chip flow leaves off.
 #
-# The Chip flow resolves RUN_POST_GRT_RESIZER_TIMING to False, so there is
-# normally no ResizerTimingPostGRT step at all and hold is repaired exactly
-# once, in ResizerTimingPostCTS, against *estimated* parasitics. Nothing
-# revisits it after RCX extracts the real ones, and the gap between the two
-# is measurable: a design fixed to +0.35 ns post-CTS came out of routing with
-# 88 violations at up to -0.359 ns. That gap is the entire hold problem here.
+# By default there is no ResizerTimingPostGRT step at all, so hold is repaired
+# exactly once in ResizerTimingPostCTS, against *estimated* parasitics, with
+# nothing revisiting it after RCX extracts the real ones. That gap is the
+# entire hold problem here: a design fixed to +0.35 ns post-CTS came out of
+# routing with 88 violations at up to -0.359 ns.
 #
-# Fixing it after global routing is the targeted version of what raising
-# PL_RESIZER_HOLD_SLACK_MARGIN tried to do bluntly. The parasitics are close
-# to final, so the repair lands on the paths that are actually violating
-# rather than on 14,640 endpoints that mostly are not, and the perturbation
-# is correspondingly smaller. GRT_RESIZER_HOLD_SLACK_MARGIN below stops being
-# dead config the moment this is True.
+# Repairing after global routing is the targeted version of what raising
+# PL_RESIZER_HOLD_SLACK_MARGIN tried to do bluntly. Parasitics are close to
+# final, so the repair lands on the paths actually violating and the
+# perturbation is correspondingly smaller.
 #
-# The setup half of the same step is nearly a no-op at 200 ns, since
-# GRT_RESIZER_SETUP_SLACK_MARGIN is 0.025 against tens of nanoseconds of
-# slack, and GRT_RESIZER_ALLOW_SETUP_VIOS is False so the hold repair cannot
+# The setup half of the step is nearly a no-op at 200 ns
+# (GRT_RESIZER_SETUP_SLACK_MARGIN is 0.025 against tens of nanoseconds of
+# slack), and GRT_RESIZER_ALLOW_SETUP_VIOS is False, so hold repair cannot
 # trade setup away to do its job.
 RUN_POST_GRT_RESIZER_TIMING: true
 
-# 0.3 was the first value tried and it undershot. Turning the step on took
-# reg-to-reg hold violations from 57 to 19 while inserting a single buffer,
-# which says the aim was right and the margin was too small to reach the rest:
-# at 0.3 the step found one endpoint worth repairing and stopped. The 14
-# reg-to-reg violations left at signoff are all inside 0.204 ns, so a 0.6
-# margin covers every one of them with room to spare.
+# 0.3 undershot: turning the step on took reg-to-reg hold violations from 57
+# to 19 while inserting a single buffer, so the aim was right and the margin
+# too small to reach the rest. The violations left over are all inside
+# 0.204 ns, which 0.6 covers with room to spare.
 #
-# The risk of raising it is the failure already seen once at the post-CTS
-# stage, where a large margin bought 33,152 buffers and made hold worse by
-# moving clock sinks. It does not carry over here. That blowup came from
-# repairing 14,640 endpoints against estimated parasitics before CTS had
-# settled; this step runs after global routing, on a placed and clocked
-# design, and its own measured behaviour at 0.3 was one endpoint and one
-# buffer. Doubling the margin against a violation set that tops out at
-# 0.204 ns is a different order of intervention entirely.
+# This is not the post-CTS blowup in a new place. That one repaired 14,640
+# endpoints against estimated parasitics before CTS had settled; this step
+# runs after global routing on a placed and clocked design, and at 0.3 it
+# touched one endpoint.
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.6
 
 # Run 1 designs achieved 3k to 14k cells/mm2 against a much higher theoretical
-# maximum, and ticket 10 flagged 35% as the optimistic end of that experience.
-# There is room: 2.33 mm2 of cells in roughly 10.4 mm2 of placeable core is
-# about 22% actual utilisation, so 35% is a ceiling the placer spreads under
-# rather than a target it has to reach.
+# maximum, so 35% is the optimistic end of that experience. There is room:
+# 2.33 mm2 of cells in roughly 10.4 mm2 of placeable core is about 22% actual
+# utilisation, so this is a ceiling the placer spreads under rather than a
+# target it has to reach.
 PL_TARGET_DENSITY_PCT: 35
 GRT_ALLOW_CONGESTION: true
 
-# Ticket 32: keep the delay cells away from the resizer. Every one of
+# Keep the delay cells away from the resizer. Every one of
 # RepairDesignPostGPL's 16,518 max-fanout repair buffers was a delay cell, one
 # whose purpose is adding delay, while wire-length and slew repair picked
 # sensible buf/clkbuf sizes. OpenROAD's fanout repair takes the library's
@@ -319,8 +243,8 @@ GRT_ALLOW_CONGESTION: true
 EXTRA_EXCLUDED_CELLS:
   - "gf180mcu_fd_sc_mcu7t5v0__dly*"
 
-# Ticket 32: relax the fanout constraint, because its repair is degenerate on
-# this design and the constraint is not being met anyway.
+# Relax the fanout constraint, because its repair is degenerate on this design
+# and the constraint is not being met anyway.
 #
 # At the PDK default of 10, RepairDesignPostGPL spends 17,002 buffers on 2,058
 # violating nets, and tracing one shows why that number is so large: the JTAG
@@ -338,27 +262,24 @@ EXTRA_EXCLUDED_CELLS:
 # wide nets. Those two have working repair: they build real trees.
 MAX_FANOUT_CONSTRAINT: 40
 
-# Ticket 29: global routing's "extra iterations to remove overflow" loop
-# (LibreLane default 50) restarts from iteration 1 every time it disables NDR
-# on a congested net. This design has 73 delaynet_*_clk_PAD nets (hold-fix
-# delay-matching buffers on the clock net) that can each trigger a restart, and
-# a live 6 MHz run stalled 6+ hours in with only 2/73 cleared at the default of
-# 50. Capped to 12 first: measured a striking, exact regularity -- one net
-# disabled every 8m12s, every single time, in strict descending net-ID order
-# (72, 71, 70, ...), regardless of iteration count within the cycle. That means
-# the cap barely changes *which* nets end up NDR-disabled (same order either
-# way), only how much time is wasted per cycle before conceding -- so pushed
-# lower still. GRT_ALLOW_CONGESTION above already means the router accepts
-# finishing with residual congestion instead of erroring, so this is a real
-# routing-quality tradeoff on these 73 nets specifically, but a predictable and
-# now much cheaper one.
+# Global routing's "extra iterations to remove overflow" loop (LibreLane
+# default 50) restarts from iteration 1 every time it disables NDR on a
+# congested net. This design has 73 delaynet_*_clk_PAD nets that can each
+# trigger a restart, and a run stalled 6+ hours in with only 2 of 73 cleared at
+# the default.
+#
+# The cap does not change *which* nets end up NDR-disabled, only how long the
+# router grinds before conceding on each: at 12 it disabled one net every 8m12s
+# exactly, in strict descending net-ID order, and at 3 the same order in about
+# 25s. GRT_ALLOW_CONGESTION above already accepts residual congestion, so this
+# is a real routing-quality tradeoff on those 73 nets, and a predictable one.
 GRT_OVERFLOW_ITERS: 3
 
 # Let the legalizer search a long way. The template raises Y from LibreLane's
 # default for a design of two SRAMs and a counter; this one arrives at
 # `RepairDesignPostGPL` with a 5,773-load clock net, a 4,257-load reset and four
-# more nets over 1,500, none of them buffered (flow/README.md's "no buffering at
-# all on its highest-fanout nets"). Repairing them inserts about 61,000 buffers
+# more nets over 1,500, none of them buffered. Repairing them inserts about
+# 61,000 buffers
 # and grows standard-cell area by a third in one step, which lands on top of a
 # global placement that had already spread to the 35% density target. At 500 x
 # 200 um the legalizer could not find room for 425 of the new cells and
@@ -368,51 +289,39 @@ GRT_OVERFLOW_ITERS: 3
 PL_MAX_DISPLACEMENT_X: 1000
 PL_MAX_DISPLACEMENT_Y: 1000
 
-# Fix antenna violations after DRT. Ticket 27: OpenROAD's own antenna checker
-# converges to 0 net/pin violations at a 10% margin, but the full-chip KLayout
-# antenna deck (a stricter, independent model) still found 9 residual ANT.16_i_
-# ANT.4 (metal3-perimeter-to-gate-oxide-area) violations against that same
-# repaired route -- the same class of gap already found between OpenROAD's and
-# KLayout's DRC checkers for the metal3 spacing rule. Raised the margin so
-# OpenROAD's repair targets real headroom past its own threshold rather than
-# converging exactly to it, since exactly-at-threshold is what let KLayout's
-# stricter model disagree.
+# Fix antenna violations after detailed routing. OpenROAD's own checker
+# converges to zero at a 10% margin, but KLayout's stricter, independent
+# antenna deck still found 9 residual ANT.16_i_ANT.4 violations against that
+# same route. Converging exactly to OpenROAD's threshold is what leaves room
+# for the stricter model to disagree, so the margin targets real headroom past
+# it.
 DRT_ANTENNA_REPAIR_ITERS: 15
 DRT_ANTENNA_REPAIR_MARGIN: 25 # %
 
-# Ticket 29: OpenROAD.DetailedRouting was OOM-killed by the host kernel at
-# iteration 11 (confirmed via `journalctl -k`, a genuine global OOM, not a
-# container cgroup limit -- the openroad process itself held ~5.5 GB RSS at
-# the time). Unset, DRT_THREADS defaults to the host's full core count (20
-# here); capping it trades wall-clock time for a smaller peak working set,
-# since each thread holds its own regional routing state. DRT_SAVE_SNAPSHOTS
-# checkpoints the odb after every iteration (disk cost, ~450 GB free locally)
-# so a future crash loses at most one iteration instead of the ~13 hours this
-# one just did -- iterations 3-11 alone were 47 min to 2h43m each with no
-# incremental save.
+# Detailed routing was OOM-killed by the host kernel at iteration 11, holding
+# ~5.5 GB RSS. Unset, DRT_THREADS defaults to the host's full core count;
+# capping it trades wall-clock time for a smaller peak working set, since each
+# thread holds its own regional routing state. DRT_SAVE_SNAPSHOTS checkpoints
+# the odb after every iteration, so a crash loses one iteration rather than the
+# ~13 hours this one did (iterations 3-11 were 47 min to 2h43m each).
 DRT_THREADS: 8
 DRT_SAVE_SNAPSHOTS: true
 
-# Ticket 27's macro-pitch fix (flow/macros.yaml, 301.300 -> 302.300 um between
-# SRAM columns) opened a real 1 um gap between abutted macros to clear a metal3
-# DRC violation, but a bare 1 um-wide, 515.81 um-tall sliver between two hard
-# macros is a routing-congestion trap: global routing "sees" it as available
-# capacity and repeatedly tries to thread nets through it, which measured as an
-# 80+ minute stall on a step that normally takes about 90 seconds (before the
-# fix, the same gap did not exist, so this trap did not either).
+# The 1 um gap flow/macros.yaml opens between SRAM columns clears a metal3 DRC
+# violation, but a bare 1 um-wide, 515.81 um-tall sliver between two hard
+# macros is a routing-congestion trap: global routing sees it as available
+# capacity and keeps trying to thread nets through it, which measured as an
+# 80+ minute stall on a step that normally takes about 90 seconds.
 #
-# Blocking the gaps over the 14 rectangles (7 columns x 2 rows) makes routing
-# treat them as it did when the macros were abutted, while the physical air gap
-# that satisfies the DRC rule stays untouched, since this only blocks new routed
-# metal, not the macros' own fixed geometry.
+# Blocking the 14 gaps (7 columns x 2 rows) makes routing treat them as it did
+# when the macros abutted. This blocks new routed metal only; the physical air
+# gap that satisfies the DRC rule is untouched.
 #
-# Metal1 to Metal3 only, not all five (ticket 32). The macro carries no Metal4
-# or Metal5 at all, in LEF or GDS, so those two layers have no neighbouring
-# geometry to be spaced against and are already routed freely straight over the
-# macro body. Blocking them over the gap as well was over-caution, and it cost
-# real violations: the first converging route finished with 107 shorts, every
-# one a net against these obstructions, 80 on Metal4 and 27 on Metal5, none on
-# any other layer.
+# Metal1 to Metal3 only, not all five. The macro carries no Metal4 or Metal5 in
+# LEF or GDS, so those layers have no neighbouring geometry to be spaced
+# against and route freely over the macro body. Blocking them too cost real
+# violations: 107 shorts, every one a net against these obstructions, 80 on
+# Metal4 and 27 on Metal5.
 ROUTING_OBSTRUCTIONS:
   - ["Metal1", 1061.3, 502.0, 1062.3, 1017.81]
   - ["Metal2", 1061.3, 502.0, 1062.3, 1017.81]
@@ -501,9 +410,8 @@ IGNORE_DISCONNECTED_MODULES:
 ERROR_ON_MAGIC_DRC: False
 
 # Prevent false positive DRC errors in I/O cells. This list is the template's,
-# written against the foundry SRAM's internals; whatever the OCD macro needs on
-# top of it is discovered by running into the false errors, per the map's DRC
-# fog patch, and appended here.
+# written against the foundry SRAM's internals. Anything a new macro needs on
+# top of it is discovered by running into the false errors and appended here.
 MAGIC_GDS_FLATGLOB:
 # For contacts
 - "*_CDNS_*"
@@ -557,18 +465,16 @@ KLAYOUT_PROPERTIES: dir::gf180mcu_render.lyp
 # workers * threads should equal the available
 # hardware threads for a best possible utilization.
 #
-# Explicitly deep (the runset's own default): flow/klayout-drc-memory-research.md
-# first tried forcing run_mode: flat + a container memory cap to survive this
-# design's contact layer (17.7M polygons before merging), which worked but cost
-# 3-4x the wall time. A same-cap deep-mode run turned out both far lighter on
-# memory and faster across all 156 non-connectivity decks (2h56m total, peak
-# under 5 GB) -- deep mode's hierarchical engine exploits the huge repetition
-# in a real routed design (thousands of identical standard-cell-level via/metal
-# patterns) instead of flattening the whole chip for every rule. workers: 1
-# (sequential) is what was actually run and verified; a real host still needs
-# more headroom than this repo's default container memory limit -- see
-# flow/klayout-drc-memory-research.md for the run.sh MEMORY_LIMIT/
-# MEMORY_SWAP_LIMIT override this required.
+# Deep mode is the runset's own default and is what this design needs. Forcing
+# run_mode: flat survives the contact layer (17.7M polygons before merging) but
+# costs 3-4x the wall time; deep mode's hierarchical engine exploits the
+# repetition in a routed design instead of flattening the whole chip per rule,
+# and came out both lighter on memory and faster across all 156
+# non-connectivity decks (2h56m, peak under 5 GB).
+#
+# workers: 1 and KLAYOUT_DRC_THREADS: 1 are what was verified. This step still
+# needs more headroom than run.sh's default container memory limit; see
+# docs/explanation/known-issues.md.
 
 KLAYOUT_DRC_THREADS: 1
 

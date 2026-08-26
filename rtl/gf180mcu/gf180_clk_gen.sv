@@ -2,8 +2,8 @@
 // Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 
-// GF180MCU clock generator for the CORE-V MCU. Ticket 05 settled the
-// architecture; this is that decision built and measured.
+// GF180MCU clock generator for the CORE-V MCU: an external reference clock
+// bypassed undivided, with no PLL and no on-die oscillator.
 //
 // apb_pll is the whole clock generator, not a PLL cell inside one: upstream's
 // ASIC build wraps a PLL18_TOP hard macro, and its FPGA build (fpga_pll.sv)

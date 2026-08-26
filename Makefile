@@ -39,13 +39,13 @@ PDK_BUILD_HOME := $(PDK_ROOT)/.build-home
 # --- Design configuration ---------------------------------------------------
 SLOT ?= 1x1
 SCL  ?= gf180mcu_fd_sc_mcu7t5v0
-# Ticket 18 split the IO ring: 5.0 V over the 3.3 V core, which the foundry
-# gf180mcu_fd_io cannot do at all (it has no core-supply pad cell and shorts the
-# two domains on purpose). Changing this back is a design change, not a tuning
-# knob. run.sh carries the same default and shadows this one, so change both.
+# The IO ring is 5.0 V over the 3.3 V core, which the foundry gf180mcu_fd_io
+# cannot do at all: it has no core-supply pad cell and shorts the two domains on
+# purpose. Changing this is a design change, not a tuning knob. run.sh carries
+# the same default and shadows this one, so change both.
 PAD  ?= gf180mcu_ocd_io
-# Ticket 11 committed the OCD macro. It lives in the same libs.ref directory as
-# the foundry sram512x8, which open_pdks also installs there.
+# The OCD macro lives in the same libs.ref directory as the foundry sram512x8,
+# which open_pdks also installs there.
 SRAM ?= gf180mcu_ocd_ip_sram
 
 TOP        ?= chip_top
@@ -123,25 +123,22 @@ LIBRELANE = $(RUN) librelane \
 	  /foss/designs/flow/config.yaml
 
 harden: ## Run LibreLane RTL-to-GDS (ARGS= passes flags through)
-	$(call require,$(ROOT)/flow/config.yaml,see flow/README.md)
+	$(call require,$(ROOT)/flow/config.yaml,see docs/reference/flow.md)
 	@$(RUN) sh /foss/designs/flow/synth/sources.sh
 	@$(LIBRELANE) $(ARGS)
 	@$(MAKE) --no-print-directory sync-final
 
-# LibreLane is passed --save-views-to flow/final above and has never actually
-# populated it here: after a run that completed every step and every checker,
-# flow/final still held a GDS from a week earlier and had no spice/ directory
-# at all, which every completed run writes. So `make precheck` and `make
-# sim-gl` were reading a fossil rather than the run that had just finished,
-# silently, with nothing in either target's output to say so. That is what
-# ticket 30's "dry run against the 10 MHz-era GDS" actually was.
+# LibreLane is passed --save-views-to flow/final above and does not reliably
+# populate it: after a run that completed every step and every checker,
+# flow/final still held a GDS from a week earlier and no spice/ directory at
+# all. `make precheck` and `make sim-gl` were reading a fossil, silently.
 #
 # Mirror the newest run's own final/ instead. That directory is the one
 # LibreLane definitely writes (it announces "Saving views to <run>/final" on
-# the way out), so it is the trustworthy source. Replace rather than merge:
-# flow/final is derived, and a half-updated mixture of two runs is exactly the
-# failure being fixed. Runs stopped early with --to never write a final/, so
-# they cannot be picked up by accident.
+# the way out). Replace rather than merge: flow/final is derived, and a
+# half-updated mixture of two runs is exactly the failure being fixed. Runs
+# stopped early with --to never write a final/, so they cannot be picked up by
+# accident.
 sync-final: ## Point flow/final at the newest completed run's views
 	@src=$$(ls -td $(ROOT)/flow/runs/*/final 2>/dev/null | head -1); \
 	if test -z "$$src"; then \
@@ -152,11 +149,13 @@ sync-final: ## Point flow/final at the newest completed run's views
 	fi
 
 # OpenROAD's TritonCTS null-dereferences on this design on all but roughly one
-# attempt in a hundred: a real crash, intermittent rather than configuration
-# dependent, diagnosed in flow/chip_top.sdc's header. Retrying is the workaround,
-# the same shape as flow/pdk/build.sh retrying magic. This resumes the previous
-# run, so `make harden` has to have reached clock tree synthesis first, and it
-# leaves the run stopped at CTS: continue with
+# attempt in a hundred: a real, intermittent crash, diagnosed in
+# docs/explanation/known-issues.md. Retrying is the workaround, the same shape
+# as flow/pdk/build.sh retrying magic. Prefer the patched OpenROAD image if you
+# will do more than one run; see docs/how-to/patched-openroad.md.
+#
+# This resumes the previous run, so `make harden` has to have reached clock
+# tree synthesis first, and it leaves the run stopped at CTS. Continue with
 # `make harden ARGS="--last-run --from OpenROAD.STAMidPNR-1"`.
 harden-cts: ## Retry clock tree synthesis on the last run until it survives
 	@i=0; until $(LIBRELANE) --last-run --from OpenROAD.CTS --to OpenROAD.CTS; do \
@@ -166,11 +165,11 @@ harden-cts: ## Retry clock tree synthesis on the last run until it survives
 	done
 
 sim: ## Run RTL simulation (cocotb)
-	$(call require,$(ROOT)/sim/Makefile,see sim/README.md)
+	$(call require,$(ROOT)/sim/Makefile,see docs/how-to/simulate.md)
 	@$(RUN) make -C /foss/designs/sim
 
 sim-gl: ## Run gate-level simulation against the hardened netlist
-	$(call require,$(ROOT)/sim/Makefile,see sim/README.md)
+	$(call require,$(ROOT)/sim/Makefile,see docs/how-to/simulate.md)
 	@$(RUN) make -C /foss/designs/sim GL=1
 
 precheck-image: ## Build the wafer.space precheck container
@@ -179,16 +178,11 @@ precheck-image: ## Build the wafer.space precheck container
 	  && rm -rf $$tmp
 
 # precheck.py defaults --threads to "max", which resolves to os.cpu_count().
-# On this host that is 20, and KLayout's DRC holds per-thread copies of the
-# intermediate layers, so stage 14 grew to 9.15 GB resident against 17.7 GB of
-# virtual and the kernel OOM-killed it four hours in. Nothing was wrong with the
-# layout: the log records SIGKILL and the kernel records
-# `Out of memory: Killed process (.klayout-wrappe)`.
-#
-# One thread is the value with direct evidence behind it, because the harden
-# runs the byte-identical deck (`decks=all,-antenna,-density,-cup`) at
-# `threads=1` and completes in about four and a quarter hours. Raise it only
-# against measurement, and only with the machine otherwise idle.
+# KLayout's DRC holds per-thread copies of the intermediate layers, so on a
+# 20-thread host stage 14 grew to 9.15 GB resident and the kernel OOM-killed it
+# four hours in. One thread is the value with direct evidence behind it: the
+# harden runs the byte-identical deck at threads=1 and completes in about four
+# and a quarter hours. Raise it only against measurement.
 PRECHECK_THREADS ?= 1
 
 precheck: ## Check the final GDS against wafer.space submission rules

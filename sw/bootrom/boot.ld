@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
  * Adapted from core-v-mcu/a2_boot/core-v-mcu2-rom.ld. Every address there was
- * upstream's own boot-address layout, which ticket 04 said stops existing
- * entirely once L2 is 16 KiB contiguous from 0x1C00_0000; these are this
+ * upstream's own boot-address layout, which stops existing entirely once L2
+ * is 16 KiB contiguous from 0x1C00_0000; these are this
  * design's addresses instead.
  *
  * ROM: apb_soc_ctrl's r_bootaddr reset value is 0x1A00_0080 and boot_rom.sv
@@ -13,7 +13,7 @@
  * (0x1A00_0000); that decode window is fixed by upstream RTL this port
  * doesn't touch, not by how much code actually lands in it. The LENGTH here
  * is a build-time guard against overrunning that window, not the measured
- * size ticket 23 reports.
+ * size `make bootrom` reports.
  *
  * L2: BOOT_STACK_RESERVE_BYTES (boot_image.h) at the top of the 16 KiB region,
  * for this ROM's own .bss (spi.c's auccmd buffer) and stack only. The ROM

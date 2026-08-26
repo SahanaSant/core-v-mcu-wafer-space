@@ -3,12 +3,11 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * sim/README.md's second "first test worth writing": a read-write-read walk
- * across every SRAM bank, byte enables checked individually. [start, end)
- * spans this app's own test range in L2 (main.c picks it, well clear of the
- * running code and the boot stack ticket 04/23 reserved at the top of the
- * 16 KiB region), which is a large enough span to cross both interleaved
- * channels and both private banks (ticket 11) regardless of exactly how the
+ * A read-write-read walk across every SRAM bank, byte enables checked
+ * individually. [start, end) spans this app's own test range in L2 (main.c
+ * picks it, well clear of the running code and the boot stack reserved at the
+ * top of the 16 KiB region), which is a large enough span to cross both
+ * interleaved channels and both private banks regardless of exactly how the
  * crossbar splits the flat address space between them.
  */
 

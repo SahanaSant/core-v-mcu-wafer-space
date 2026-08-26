@@ -46,7 +46,7 @@ HEADER = """\
 // upstream's own a2_boot/srec2verilog.py already used to turn an .srec into
 // Verilog for the original a2_bootrom.sv.
 //
-// Built: {date}, {nwords} words, {nbytes} bytes (ticket 04 estimated 2 KiB).
+// Built: {date}, {nwords} words, {nbytes} bytes.
 
 module a2_bootrom #(
     parameter int unsigned ADDR_WIDTH = {addr_width},

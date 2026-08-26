@@ -26,9 +26,9 @@ FP_SIZING: absolute
 DIE_AREA: [0, 0, 3932, 5122]
 CORE_AREA: [442, 442, 3490, 4680]
 
-# South: the reference clock and reset, then GPIO 0 to 13. Ticket 21 put the
-# SRAM array along this edge, so the functions that land here are deliberately
-# the slowest ones the pin table has.
+# South: the reference clock and reset, then GPIO 0 to 13. The SRAM array runs
+# along this edge, so the functions that land here are deliberately the slowest
+# ones the pin table has.
 PAD_SOUTH: [
     clk_pad,
     rst_n_pad,
@@ -81,8 +81,8 @@ PAD_EAST: [
 ]
 
 # North: uart0, qspim1, sdio0 and qspim0, the boot flash interface among them.
-# Both analog pads are here and both are unconnected; they hold their bonding
-# positions and nothing else (ticket 05 left this design with no analog).
+# Both analog pads are here and both are unconnected; nothing in this design is
+# analog, so they hold their bonding positions and nothing else.
 PAD_NORTH: [
     "analog\\[1\\].pad",
     "analog\\[0\\].pad",

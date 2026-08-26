@@ -6,17 +6,15 @@
 // lossless, correctly-timed encoding of the compiled sw/bootrom image: every
 // word gen_bootrom.py read from bootrom.bin reads back identically through
 // a2_bootrom's registered CEN/A/Q interface, and an address past the image
-// reads zero (the case statement's default). Run under Icarus (ticket 16
-// pinned it: the PDK's icgtp model needs a UDP-capable simulator, so this
-// design's gate-level checks all have to live on the same tool), invoked as
-// `make bootrom`.
+// reads zero (the case statement's default). Run under Icarus, which every
+// gate-level check here uses because the PDK's icgtp model needs a UDP-capable
+// simulator. Invoked as `make bootrom`.
 //
 // This proves the ROM ==> compiled-binary equivalence, not that the CPU
 // actually fetches, runs main(), and jumps: that needs the CV32E40P core, the
 // uDMA QSPI block, a flash model and the rest of the SoC wired up, which is
-// the gate-level simulation harness (map fog entry, not built by this
-// ticket). What this testbench proves is a real precondition for that harness
-// ever working, not a placeholder for it.
+// what sim/ does. What this testbench proves is a precondition for that
+// harness working, not a placeholder for it.
 //
 // Golden data comes from flow/build/bootrom/gf180_bootrom_golden.{mem,vh},
 // gen_bootrom.py's byproduct of the same run that wrote gf180_bootrom.sv --

@@ -11,7 +11,7 @@
 # downloads carries only the five gf180mcu_fd_* libraries. The pinned open_pdks
 # commit knows about the others (libs.tech/librelane ships configs for them and
 # .config/nodeinfo.json pins each to a commit) but this distribution did not
-# build them. Ticket 15 wanted three of them:
+# build them. This design wants three of them:
 #
 #   gf180mcu_ocd_ip_sram     2.6x denser SRAM than the foundry macro
 #   gf180mcu_ocd_io          pad cells with a core supply separate from the IO
@@ -146,7 +146,7 @@ echo "==> staging"
 
 [ -d "$BUILD/$PDK/libs.ref" ] || { echo "error: no $PDK/libs.ref under $BUILD" >&2; exit 1; }
 
-# Ticket 20: two Liberty fields on gf180mcu_ocd_ip_sram__sram1024x8m8wm1 are
+# Two Liberty fields on gf180mcu_ocd_ip_sram__sram1024x8m8wm1 are
 # leftovers from the foundry macro this OCD library was derived from. Patch
 # the staged tree so the fix survives every rebuild rather than being a
 # one-time hand edit.

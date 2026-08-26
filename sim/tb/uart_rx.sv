@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 //
 // Plain synchronous UART receiver for tb_top.sv's monitor side, sampling on
-// the same clk_PAD the design itself runs from (ticket 05/24: periph_clk is
-// ref_clk_i bypassed undivided, i.e. the same net as clk_PAD), so
+// the same clk_PAD the design itself runs from (periph_clk is ref_clk_i
+// bypassed undivided, i.e. the same net as clk_PAD), so
 // CLKS_PER_BIT is exactly periph_clk_hz / baud -- the same division sw/app's
 // uart0_open() programs into UART_SETUP.DIV, not an independent estimate.
 

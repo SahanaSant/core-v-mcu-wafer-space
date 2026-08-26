@@ -3,10 +3,9 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * Ticket 31's gate-level sim harness image: the thing sw/bootrom/main.c
- * copies from flash, CRC-checks and jumps to. Runs the two checks
- * sim/README.md's "first tests worth writing" list still needed a real image
- * for (a read-write-read SRAM walk and a UART character out; reset/clock
+ * The simulation harness image: the thing sw/bootrom/main.c copies from
+ * flash, CRC-checks and jumps to. Runs the two checks that need a real image
+ * (a read-write-read SRAM walk and a UART character out; reset and clock
  * reaching the core and a real boot are proven just by getting here at all),
  * then reports the result over UART0 so the cocotb testbench can assert
  * against a fixed string instead of inspecting internal state.
@@ -19,7 +18,7 @@
 
 #define APP_BAUD_HZ 115200u
 
-/* L2 is 0x1C00_0000-0x1C00_4000 (ticket 11/19); boot_image.h reserves the top
+/* L2 is 0x1C00_0000-0x1C00_4000; boot_image.h reserves the top
  * 512 B for sw/bootrom's own stack, which this app's crt0.S reuses as its own
  * stack (the ROM is done running once jump_to_address() reaches here), so the
  * test range has to stay clear of it. Keep this boundary in step with
@@ -28,9 +27,9 @@
 #define L2_IMAGE_BASE  0x1C000000u
 #define L2_TEST_END    0x1C003E00u
 
-/* Ticket 31: gate-level sim of the full SoC under Icarus runs at 23.4us of
- * simulated time per real second (measured with waveform dumping off; it was
- * 5-6us with it on, which is what the earlier figure here recorded). This
+/* Gate-level sim of the full SoC under Icarus runs at 23.4us of simulated
+ * time per real second, measured with waveform dumping off (5-6us with it
+ * on). This
  * walk is already about 8 ms of the 28 ms a full run takes, so the full
  * [test_start, L2_TEST_END) range (~15 KiB, walked twice, byte by byte) would
  * still be roughly half an hour of gate-level simulation. 512 B crosses

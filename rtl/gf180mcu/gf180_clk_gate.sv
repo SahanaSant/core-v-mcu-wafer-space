@@ -145,11 +145,11 @@ endmodule
 //
 // It could not be built behind this port list in any case. Glitch-free muxing
 // needs synchroniser flops, the port list upstream fixed has no reset, and
-// adding one means patching every instantiation site, which would give up
-// ticket 03's result that the SoC needs no upstream source patches, and ticket
-// 13's hope of contributing this file back. Reset-less synchronisers would come
-// up unknown and propagate X into the clock, which is exactly what the
-// gate-level boot simulation in this map's destination has to survive.
+// adding one means patching every instantiation site, which would give up both
+// the property that the SoC needs no upstream source patches and the prospect
+// of contributing this file back. Reset-less synchronisers would come up
+// unknown and propagate X into the clock, which is exactly what the gate-level
+// boot simulation has to survive.
 //
 // The hazard is real but it belongs to software: cfg_cpha_i, cfg_cpol_i and the
 // uDMA r_clockout_mux are APB-writable at any time, and switching one while the

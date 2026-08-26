@@ -3,7 +3,7 @@
  * Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
  * SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
  *
- * Entry point for ticket 31's app image. No trap-vector table: unlike
+ * Entry point for the app image. No trap-vector table: unlike
  * sw/bootrom/crt0.S, this image is never reached by a hardware reset vector,
  * only by sw/bootrom/main.c's jump_to_address() calling it as a plain C
  * function, so _start just needs to be the first thing in .text.

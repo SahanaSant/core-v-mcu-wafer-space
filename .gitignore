@@ -1,8 +1,8 @@
 # PDK fetched by `make pdk`
 /pdk/
 
-# Locally-built OpenROAD source/patch/build trees (ticket 26). Not fetched by
-# any make target; see flow/openroad/README.md for how each one was built.
+# Locally-built OpenROAD source/patch/build trees. Not fetched by any make
+# target; see docs/how-to/patched-openroad.md.
 /openroad-build/
 
 # LibreLane outputs
@@ -28,9 +28,8 @@ __pycache__/
 *.vcd
 *.xml
 
-# Nix
-result
-result-*
+# Claude Code session state
+/.claude/
 
 # Editors and OS
 .DS_Store

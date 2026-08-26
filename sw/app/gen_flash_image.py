@@ -13,7 +13,7 @@
 #
 # Also writes a $readmemh-format hex file (one byte per line) for
 # core-v-mcu/tb/qspi_model/GD25Q128B.v's `initfile` parameter, which is how
-# sim/'s cocotb harness preloads the flash model ticket 31 uses instead of a
+# sim/'s cocotb harness preloads the flash model instead of using a
 # hand-rolled QSPI BFM.
 
 import argparse

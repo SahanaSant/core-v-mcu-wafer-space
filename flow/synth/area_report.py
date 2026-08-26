@@ -20,7 +20,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-# A 1x1 slot's core area, from docs/porting-analysis.md.
+# A 1x1 slot's core area.
 CORE_AREA_UM2 = 12.92e6
 # The wafer.space template default that the placed-area arithmetic hangs off.
 TARGET_DENSITY = 0.35
@@ -32,11 +32,10 @@ TARGET_DENSITY = 0.35
 # between libraries that resolve to the same reference cell; across libraries,
 # compare the um2.
 GE_CELL_PREFIX = "nand2_"
-# Ticket 11's planning figure for the routing channels a macro array needs on top
-# of the macros themselves: 12% on a 4x4 array of sram1024x8, from 148 nets
-# escaping each row's bottom edge at Metal3's 0.56 um pitch. It is an estimate,
-# unlike everything else in this report, and ticket 21 replaces it with a
-# floorplan.
+# Planning figure for the routing channels a macro array needs on top of the
+# macros themselves, from 148 nets escaping each row's edge at Metal3's 0.56 um
+# pitch. It is an estimate, unlike everything else in this report; the real
+# floorplan is in flow/macros.yaml.
 MACRO_CHANNEL_OVERHEAD = 0.12
 
 
@@ -141,7 +140,7 @@ def read_lef_sizes(lef_dir):
     foundry liberty with the header swapped and the address bus resized, so its
     `area` field describes the macro it was copied from: 209,400 um2 declared for
     the sram1024x8 against a real 155,414, and 3.2x out on the sram64x8. LEF
-    geometry is the only measured area these macros have. See ticket 20.
+    geometry is the only measured area these macros have.
     """
     macro_re = re.compile(r"^\s*MACRO\s+(\S+)")
     size_re = re.compile(r"^\s*SIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)")
@@ -206,11 +205,10 @@ def main():
     w(f"# Logic area: `{args.top}` on `{args.scl}`")
     w("")
     w(
-        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. Every "
-        "technology cell is real as of ticket 24 (boot ROM, clock generator, clock cells, "
-        "memories); the SRAM macros are real instances with no area in this liberty, and "
-        "there are no pads, no floorplan and no PDN. The cell areas below are standard "
-        "cells and nothing else; the macros are counted separately, from LEF."
+        f"Mapped at corner `{corner}` against a {args.clock_period:g} ns target. The SRAM "
+        "macros are real instances with no area in this liberty, and there are no pads, no "
+        "floorplan and no PDN. The cell areas below are standard cells and nothing else; "
+        "the macros are counted separately, from LEF."
     )
     w("")
     w(f"Gate equivalent: `{ge_cell}` = {ge:.3f} um2, read from the liberty.")

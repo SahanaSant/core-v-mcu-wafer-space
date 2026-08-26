@@ -13,8 +13,8 @@
 // no `ifdef` around it. The file's own ``ifdef functional`` switches
 // only `timescale` and delay mode, so defining it changes nothing here.
 //
-// Ticket 31 needs RTL simulation because the boot ROM is compiled into gates
-// and no software change can be tested against a netlist. This file, plus the
+// RTL simulation is needed because the boot ROM is compiled into gates and no
+// software change can be tested against a netlist alone. This file, plus the
 // clock-cell swap in sim/cocotb/tb_top_tb.py, is what removes the last
 // dependency on the PDK cell libraries from an RTL run.
 //

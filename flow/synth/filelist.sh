@@ -3,52 +3,36 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# Resolve the GF180MCU file list and standard-cell liberty for the CORE-V MCU
-# SoC. Sourced, not executed: `elaborate.sh` and `area.sh` both need the same
-# two things and they are generated rather than maintained by hand, so they live
-# in one place.
+# Resolve the file list and the Liberty files that elaborate.sh and area.sh
+# both need. Sourced, not executed.
 #
-# On return from gf180_filelist, $WORK/gf180.f is a yosys `-F` command file and
-# $WORK is the cwd. gf180_liberty sets $LIB and $LIBS.
+# After gf180_filelist, $WORK/gf180.f is a yosys `-F` command file and $WORK is
+# the cwd. gf180_liberty sets $LIB (standard cells) and $LIBS (everything).
 
 ROOT=${ROOT:-/foss/designs}
 CORE=openhwgroup.org:systems:core-v-mcu
-# `core_v_mcu` is the SoC on its own, which is what every area and timing
-# measurement in this map is quoted against. `chip_top` adds the pad ring and
-# the marker cells on top of it (ticket 25) and is what `make harden` builds.
+# core_v_mcu is the SoC alone, which every area and timing measurement is
+# quoted against. chip_top adds the pad ring and marker cells and is what
+# `make harden` builds.
 TOP=${TOP:-core_v_mcu}
 BUILD=$ROOT/flow/build
 WORK=$BUILD/build/openhwgroup.org_systems_core-v-mcu_0/default-verilator
 
-# Resolve the standard-cell liberty and assert the variant. Both callers read it
-# with `read_liberty -lib` before the RTL, because rtl/gf180mcu/gf180_clk_gate.sv
-# instantiates PDK cells by name and yosys-slang can only import a module as a
-# black box if some earlier yosys command already loaded it. Cell area then comes
-# from the liberty rather than being silently zero.
+# Both callers read these with `read_liberty -lib` before the RTL, because
+# rtl/gf180mcu/ instantiates PDK cells by name and yosys-slang imports an
+# instance as a black box only if an earlier command already loaded the module.
+# Cell area then comes from Liberty instead of being silently zero.
 #
-# Cell area does not depend on the corner, but delay-driven technology mapping
-# does: a slower corner makes ABC buy drive strength. Map at the setup corner the
-# flow will sign off at, so the area number is the one implementation will
-# actually see. Ticket 14 settled that at 3.3 V, so the corner is ss_125C_3v00
-# rather than the PDK LibreLane default's 5.0 V. Note this is still
-# gf180mcu_fd_sc_mcu7t5v0: the `5v0` is the oxide, and the library carries all
-# 229 cells at every one of its fifteen corners with identical geometry.
+# The corner is the 3.3 V signoff corner: cell area does not depend on it but
+# delay-driven mapping does, and a slower corner makes ABC buy drive strength.
+# The library is still gf180mcu_fd_sc_mcu7t5v0 -- `5v0` is the oxide, and all
+# 229 cells exist at all fifteen corners with identical geometry.
 #
-# The SRAM macro comes the same way and for the same reason: ticket 19 wrote
-# rtl/gf180mcu/gf180_l2_ram.sv against gf180mcu_ocd_ip_sram__sram1024x8m8wm1, so
-# slang needs that module loaded before it reads the RTL. Its area is *not*
-# taken from here, because every OCD liberty is a foundry liberty with the header
-# swapped: the area field is 1.35x the real macro and the timing is the foundry
-# 512x8's. `stat -liberty $LIB` is given the standard-cell liberty alone, so the
-# macros stay out of the cell-area total and area_report.py adds them back from
-# LEF geometry. See ticket 20.
-#
-# The pad library arrives the same way, for `chip_top`. Its liberty is named for
-# the *core* corner, not the ring's: ticket 18 put a 5.0 V ring over the 3.3 V
-# core, and the PDK's LibreLane configuration maps the 3.3 V corner names onto
-# `gf180mcu_ocd_io`'s 3v30/3v63/2v97 files, so the pads are characterised at the
-# core supply rather than the 5.0 V they will actually run at. That is
-# pessimistic on the output driver and is left alone deliberately.
+# The SRAM Liberty is loaded for module definitions only. Its numbers are the
+# foundry sram512x8's under an OCD cell name, so area comes from LEF geometry
+# instead (see docs/explanation/known-issues.md). The pad Liberty is named for
+# the core corner rather than the ring's 5.0 V, which is pessimistic on the
+# output driver and left that way.
 gf180_liberty() {
     PDK=${PDK:-gf180mcuD}
     SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
@@ -64,10 +48,7 @@ gf180_liberty() {
     SRAM_LIB=$SRAM_LIBDIR/${SRAM_MACRO}__${LIB_CORNER}.lib
     PAD_LIB=$PDK_ROOT/$PDK/libs.ref/$PAD/lib/${PAD}__${PAD_LIB_CORNER}.lib
 
-    # Ticket 15 built the PDK for gf180mcuD alone, so a wrong variant name no
-    # longer resolves to a real populated directory. Assert anyway: the
-    # assertion is what keeps that true. C and D differ in top-metal thickness
-    # and therefore in DRC rules.
+    # C and D differ in top-metal thickness and therefore in DRC rules.
     [ "$PDK" = gf180mcuD ] || {
         echo "error: PDK is $PDK, this design is gf180mcuD only" >&2
         exit 1
@@ -76,7 +57,6 @@ gf180_liberty() {
     [ -r "$SRAM_LIB" ] || { echo "error: no liberty at $SRAM_LIB" >&2; exit 1; }
     [ -r "$PAD_LIB" ] || { echo "error: no liberty at $PAD_LIB" >&2; exit 1; }
 
-    # Every liberty yosys has to load, in read order.
     LIBS="$LIB $SRAM_LIB $PAD_LIB"
 }
 
@@ -89,30 +69,23 @@ gf180_filelist() {
     fusesoc --cores-root "$ROOT/core-v-mcu" run \
         --target default --tool verilator --setup "$CORE" >fusesoc.log 2>&1
 
-    # Everything the eFPGA brings with it comes out. `quicklogic.com:ip:efpga`
-    # ships inside `protect envelopes that no open front end reads, and there is
-    # no GF180 implementation of it to read anyway;
-    # rtl/gf180mcu/gf180_efpga_stub.sv keeps the SoC's eFPGA interfaces
-    # terminated in its place. Nothing else is excluded: upstream's filesets
-    # already pick the flip-flop register file over the latch one and leave the
-    # assertion and logging files out.
+    # The eFPGA and everything it brings comes out: quicklogic.com:ip:efpga
+    # ships inside `protect envelopes no open front end reads, and there is no
+    # GF180 implementation of it. rtl/gf180mcu/gf180_efpga_stub.sv terminates
+    # the SoC's eFPGA interfaces in its place. Nothing else is excluded.
     grep -E '^(\+incdir\+|src/)' "$WORK"/*.vc \
         | grep -v 'quicklogic.com_ip_efpga_0' \
         | grep -v 'core-v-mcu/efpga_subsystem/' \
         >"$WORK/gf180.f"
 
-    # The GF180MCU target's own sources, plus black boxes for the technology
-    # cells that have not been written yet. The PDK cells that gf180_clk_gate.sv
-    # and gf180_l2_ram.sv instantiate are not here: they arrive from the liberty,
-    # see gf180_liberty.
+    # The GF180MCU technology cells. The PDK cells they instantiate arrive from
+    # Liberty, not from here.
     find "$ROOT/rtl/gf180mcu" -name '*.sv' | sort >>"$WORK/gf180.f"
-    echo "$ROOT/flow/synth/stubs.sv" >>"$WORK/gf180.f"
 
-    # The pad ring and the wafer.space marker cells. Always in the list, whether
-    # or not $TOP is chip_top: slang parses every file it is given, so chip_top's
-    # instantiations have to resolve either way, and the marker cells are
-    # port-less black boxes with no netlist cost. The pad cells themselves arrive
-    # from the pad liberty, see gf180_liberty.
+    # The pad ring and the wafer.space marker cells, always in the list whether
+    # or not $TOP is chip_top: slang parses every file it is given, so
+    # chip_top's instantiations have to resolve either way. The marker cells are
+    # port-less black boxes with no netlist cost.
     find "$ROOT/rtl/chip" -name '*.sv' | sort >>"$WORK/gf180.f"
     find "$ROOT/ip" -path '*/vh/*.v' | sort >>"$WORK/gf180.f"
 

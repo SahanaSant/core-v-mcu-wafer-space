@@ -3,28 +3,26 @@
 # Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 #
-# A first look at the critical path of the synthesised netlist. Runs inside the
-# toolchain container; invoke it as `make sta`, after `make area`.
+# A first look at the critical path of the synthesised netlist. Invoke it as
+# `make sta`, after `make area`.
 #
 # Read the output as logic depth, not as a frequency. The netlist has been
 # through neither placement nor buffering, so every net has zero parasitics and
-# the reset net drives 4,841 loads from one minimum-drive inverter. Those errors
-# do not cancel: raw slack here is hundreds of nanoseconds and means nothing.
-# `path_summary.py` recovers the part that is real, which is the number of
-# stages and what a properly driven stage costs. See its header.
+# the reset net drives thousands of loads from one minimum-drive inverter.
+# Those errors do not cancel: raw slack here is hundreds of nanoseconds and
+# means nothing. path_summary.py recovers the part that is real, the number of
+# stages and what a properly driven stage costs.
 #
-# Ticket 22: report_checks' single worst-slack path is not the deepest path,
-# because pre-layout slack is dominated by unbuffered fanout rather than by
-# stage count, and the identity of the winner moves under unrelated RTL churn.
-# So this asks for the PATH_CANDIDATES worst-slack paths in one query
-# (-group_path_count, -unique_paths_to_endpoint, -format json) and
-# path_summary.py picks whichever of them is actually deepest, reporting its
-# rank so a candidate that only barely made the window is visible as such.
+# report_checks' single worst-slack path is not the deepest path, because
+# pre-layout slack is dominated by unbuffered fanout rather than stage count,
+# and the winner's identity moves under unrelated RTL churn. So this asks for
+# the PATH_CANDIDATES worst-slack paths in one query and path_summary.py picks
+# whichever is actually deepest, reporting its rank so a candidate that only
+# barely made the window is visible as such.
 #
-# Ticket 14 settled the core supply at 3.3 V, so ss_125C_3v00 is the signoff
-# corner and is reported first. ss_125C_4v50 is kept as the informational arm:
-# it is the margin the design gave up to reach the 3.3 V SRAM macros, and
-# keeping it visible is what makes that cost re-checkable if timing gets tight.
+# ss_125C_3v00 is the 3.3 V signoff corner and is reported first. ss_125C_4v50
+# is the informational arm: it is the margin the design gave up to reach the
+# 3.3 V SRAM macros, kept visible so that cost stays re-checkable.
 
 set -eu
 
@@ -34,7 +32,7 @@ PDK=${PDK:-gf180mcuD}
 SCL=${SCL:-gf180mcu_fd_sc_mcu7t5v0}
 SRAM=${SRAM:-gf180mcu_ocd_ip_sram}
 SRAM_MACRO=${SRAM_MACRO:-gf180mcu_ocd_ip_sram__sram1024x8m8wm1}
-CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-100}
+CLOCK_PERIOD_NS=${CLOCK_PERIOD_NS:-200}
 SIGNOFF_CORNER=${LIB_CORNER:-ss_125C_3v00}
 NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
 
@@ -44,8 +42,8 @@ NETLIST=${NETLIST:-$ROOT/flow/build/area/$TOP.flat.v}
 FANOUT_LIMIT=${FANOUT_LIMIT:-500}
 
 # How many worst-slack candidates path_summary.py searches for the deepest
-# one. Measured convergence at 50, 300 and 1000 all found the same ~90-stage
-# path (ticket 22), so 300 leaves margin without the query taking long.
+# one. 50, 300 and 1000 all converge on the same path, so 300 leaves margin
+# without the query taking long.
 PATH_CANDIDATES=${PATH_CANDIDATES:-300}
 
 PDK_ROOT=${PDK_ROOT:-$ROOT/pdk}
@@ -53,16 +51,15 @@ LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SCL/lib
 SRAM_LIBDIR=$PDK_ROOT/$PDK/libs.ref/$SRAM/lib
 OUT=$ROOT/flow/build/area
 
-# Ticket 19 put sixteen SRAM macros in the netlist, so the L2 paths now need the
-# macro's own liberty rather than blackbox.lib's zero-delay model. That liberty
-# is the foundry sram512x8's timing under an OCD cell name (ticket 20), so read
-# what it reports as a pessimistic proxy, not as characterisation.
+# The L2 paths need the SRAM macro's own Liberty. It carries the foundry
+# sram512x8's timing under an OCD cell name, so read it as a pessimistic proxy,
+# not as characterisation.
 #
-# gf180mcu_ocd_ip_sram has no 4v50 corner at all, which is exactly what ticket 14
-# settled the supply on: 5.0 V would have removed this macro permanently. The
-# informational 5.0 V arm therefore runs the standard cells at 4v50 against SRAM
-# arcs from 3v00 and says so, because what that arm is for is the logic
-# comparison. There is no 5.0 V chip to measure here, only a 5.0 V logic path.
+# gf180mcu_ocd_ip_sram has no 4v50 corner at all, which is why the core supply
+# is 3.3 V: 5.0 V would have removed this macro permanently. The informational
+# 5.0 V arm therefore runs standard cells at 4v50 against SRAM arcs from 3v00
+# and says so. What that arm is for is the logic comparison; there is no 5.0 V
+# chip to measure here.
 sram_liberty_for() {
     lib=$SRAM_LIBDIR/${SRAM_MACRO}__$1.lib
     if [ -r "$lib" ]; then
@@ -90,13 +87,11 @@ for corner in ss_125C_3v00 ss_125C_4v50; do
         *) echo "note: $SRAM has no $corner corner, SRAM arcs are $(basename "$sram_lib" .lib | sed 's/.*__//')" ;;
     esac
 
-    # apb_pll is real RTL as of ticket 24, a straight bypass from ref_clk_i, so
-    # ref_clk_i is not a stand-in for a hidden clock: it is the SoC clock.
-    # Constrain it directly rather than tracing through the register file.
+    # apb_pll is a straight bypass from ref_clk_i, so ref_clk_i is the SoC
+    # clock rather than a stand-in for one. Constrain it directly.
     sta -exit >"$OUT/sta-$corner.log" 2>&1 <<EOF
 read_liberty $lib
 read_liberty $sram_lib
-read_liberty $ROOT/flow/synth/blackbox.lib
 read_verilog $READABLE
 link_design $TOP
 create_clock -name ref_clk -period $CLOCK_PERIOD_NS [get_ports ref_clk_i]
@@ -123,7 +118,6 @@ echo "Highest-fanout nets, which is what the flow has to buffer:"
 sta -exit 2>/dev/null <<EOF | grep '^  ' || true
 read_liberty $LIBDIR/${SCL}__${SIGNOFF_CORNER}.lib
 read_liberty $(sram_liberty_for "$SIGNOFF_CORNER")
-read_liberty $ROOT/flow/synth/blackbox.lib
 read_verilog $READABLE
 link_design $TOP
 set nets {}

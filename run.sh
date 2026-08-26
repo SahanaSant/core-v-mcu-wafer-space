@@ -35,11 +35,11 @@ if [ "$#" -eq 0 ]; then
     set -- bash
 fi
 
-# Cap container memory so an OOM inside a tool (KLayout DRC has hit this) gets
-# contained to the container's cgroup instead of the host OOM killer picking
-# off arbitrary host session processes (this took out pipewire/systemd --user
-# once — see flow/klayout-drc-memory-research.md). Override or blank out
-# either var to disable the cap.
+# Cap container memory so an OOM inside a tool gets contained to the
+# container's cgroup instead of the host OOM killer picking off arbitrary
+# session processes. KLayout DRC has hit this and once took out
+# pipewire and systemd --user; see docs/explanation/known-issues.md. Override
+# or blank out either variable to disable the cap.
 MEMORY_LIMIT="${MEMORY_LIMIT:-12g}"
 MEMORY_SWAP_LIMIT="${MEMORY_SWAP_LIMIT:-14g}"
 MEMFLAGS=""

@@ -8,8 +8,8 @@
 // became two when NB_L2_CHANNELS dropped to 2, and the two private banks are
 // unchanged in count. Upstream declares core_v_mcu_interleaved_ram and
 // core_v_mcu_private_ram separately because on an FPGA they are two different
-// LogiCORE block-RAM instances with different depths. Ticket 11 sized both at
-// 4 KiB, so on GF180MCU they are the same 1024 x 32 gang and the two names bind
+// LogiCORE block-RAM instances with different depths. Both are 4 KiB here, so
+// on GF180MCU they are the same 1024 x 32 gang and the two names bind
 // to one body, the way the six clock-cell names in gf180_clk_gate.sv bind to
 // three cells. One file, for the same reason: the alternative is two files whose
 // only difference is the module name.
@@ -24,7 +24,7 @@
 // gf180mcu_ocd_ip_sram is a foundry Liberty with the header swapped and the
 // address bus resized, so the area field carries the foundry sram512x8's
 // 209,400 um2 against a real 155,414, and the timing is the foundry 512x8's
-// throughout. Ticket 20 owns that. LEF SIZE is the only measured number here.
+// throughout. LEF SIZE is the only measured number here.
 
 // --- The bank ----------------------------------------------------------------
 // 1024 x 32, four ganged macros, one per byte lane.

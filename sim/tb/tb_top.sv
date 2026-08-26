@@ -2,7 +2,7 @@
 // Solderpad Hardware License, Version 2.1, see LICENSE.md for details.
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 //
-// Gate-level (and RTL) sim harness top level for ticket 31. cocotb drives
+// Gate-level and RTL simulation harness top level. cocotb drives
 // clk_PAD/rst_n_PAD and reads boot_ok_seen/sram_pass_seen here rather than on
 // chip_top directly, because chip_top's other pads (bidir_PAD, input_PAD) are
 // wide inout vectors, and cocotb's Python-side VPI access to a single bit of
@@ -275,8 +275,8 @@ module tb_top #(
   // --- Gate-level liveness -------------------------------------------------
   // Nothing reaches a pad until the SPI transfer starts, so a netlist that is
   // wedged and one that is working look identical from outside until the first
-  // chip select. There is no boot ROM instance to watch either: ticket 23
-  // dropped the a2_bootrom black box, so the ROM is synthesised into gates and
+  // chip select. There is no boot ROM instance to watch either: the ROM is
+  // synthesised into gates rather than kept as a black box, and
   // `a2_bootrom` does not appear in the netlist at all.
   //
   // The L2 macros do survive, as escaped flat identifiers rather than real

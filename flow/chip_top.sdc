@@ -5,21 +5,21 @@
 # Timing constraints for chip_top, used for both PnR and sign-off. Seeded from
 # librelane/chip_top.sdc in the gf180mcu project template (Apache-2.0, (c) 2025
 # Project Template Contributors), which is itself LibreLane's base SDC. The
-# changes from it are the port names, the jtag_tdo output constraint, and the
-# long note below on the two clocks that are missing and why.
+# changes from it are the port names, the jtag_tck clock and its clock group,
+# the jtag_tdo output constraint, and the hold false paths on asynchronous
+# inputs.
 
 current_design $::env(DESIGN_NAME)
 set_units -time ns
 
 # --- The main clock ---------------------------------------------------------
 #
-# CLOCK_PORT is the pad, CLOCK_NET the pad cell's core-side output, so the clock
-# is defined after the input buffer rather than at the bond pad. 200 ns / 5 MHz
-# is where ticket 29 landed, after 166.67 ns / 6 MHz still missed setup at the
-# slow corner by 7.72 ns on one decoder-to-interconnect path (see
-# flow/config.yaml's CLOCK_PERIOD comment for the three measured numbers and
-# why that path is structural); since the clock is external, that is a
-# synthesis and bring-up target rather than anything burned into silicon.
+# CLOCK_PORT is the pad, CLOCK_NET the pad cell's core-side output, so the
+# clock is defined after the input buffer rather than at the bond pad. The
+# period comes from flow/config.yaml: 200 ns / 5 MHz, chosen after 166.67 ns
+# still missed setup by 7.72 ns on one structural decoder-to-interconnect path.
+# The clock is external, so this is a bring-up target rather than anything
+# burned into silicon.
 
 set clock_port __VIRTUAL_CLK__
 if { [info exists ::env(CLOCK_PORT)] } {
@@ -47,28 +47,22 @@ create_clock {*}$port_args -name $clock_port -period $::env(CLOCK_PERIOD)
 
 # --- The JTAG clock ---------------------------------------------------------
 #
-# Declared as of ticket 32, and the note below on the two missing clocks is
-# kept because its reasoning is still what governs the one that is *still*
-# missing. What changed is the price, which turned out to be much higher than
-# that note assumed, and the risk, which ticket 26's patched OpenROAD removed.
-#
-# The price, measured on RUN_2026-08-22_17-27-47 by charging every buffer
-# design repair inserted back to the pad net it descends from:
+# The JTAG TAP is a genuinely asynchronous second domain, and declaring it is
+# worth real area. Charging every buffer design repair inserted back to the pad
+# net it descends from, before this was declared:
 #
 #   clk_pad     5780 loads      0 buffers    has a create_clock
 #   inputs[0]    258 loads   3377 buffers    does not
 #
 # The clock pad drives twenty-two times the loads and takes no repair buffers
-# at all, because repair_design leaves clock nets to CTS. The JTAG pad is
-# repaired as data instead, and 3377 buffers is 7% of every buffer in the
-# design, spent reaching a twenty-second of the loads. That is the concrete
-# form of what the note below calls "still buffered by repair_design as
-# ordinary high-fanout nets".
+# at all, because repair_design leaves clock nets to CTS. The JTAG pad was
+# repaired as data instead: 7% of every buffer in the design, spent reaching a
+# twenty-second of the loads.
 #
-# set_clock_groups is required alongside it: the two domains are genuinely
-# asynchronous and everything crossing between them goes through the debug
-# module's own CDC synchronisers, so without this the tool would time paths
-# that have no meaning and repair_timing would chase them.
+# set_clock_groups is required alongside it. Everything crossing between the
+# two domains goes through the debug module's own CDC synchronisers, so without
+# it the tool would time paths that have no meaning and repair_timing would
+# chase them.
 set jtag_tck_pin [get_pins -quiet {inputs\[0\].pad/Y}]
 if { [llength $jtag_tck_pin] } {
     create_clock $jtag_tck_pin -name jtag_tck -period $::env(CLOCK_PERIOD)
@@ -79,67 +73,25 @@ if { [llength $jtag_tck_pin] } {
     puts "\[WARNING] inputs\[0\].pad/Y not found; jtag_tck left unconstrained"
 }
 
-# --- One clock, and not because one is enough -------------------------------
+# --- The one clock still undeclared -----------------------------------------
 #
-# This design has three clock domains and only one of them is constrained here,
-# because `OpenROAD.CTS` crashes on it. The crash is a null dereference in
-# TritonCTS, from the stack trace:
+# ref_clk_div40 would be `create_generated_clock -divide_by 40` off the output
+# pin of net `*apb_fll_if_i.ref_clk_o`, which is gf180_clk_gen.sv's `clkdv`
+# output. (Note the name: clkdv's internal `clkout` register folds away,
+# because `assign clk_o = (CLK_DIV_VALUE <= 1) ? clk_i : clkout` is a straight
+# connection at the constant divisor of 40.)
 #
-#   odb::dbNet::get1stSignalInput(bool)
-#   cts::TritonCTS::separateMacroRegSinks(...)
-#   cts::TritonCTS::initClockTreeForMacrosAndRegs(...)
-#   cts::TritonCTS::initClock(...)
-#   cts::TritonCTS::initOneClockTree(...)   x11, recursing
+# It resolves correctly and OpenSTA reports it; CheckSDCFiles and STAPrePNR
+# accept it. It is left out because each extra clock is another tree for CTS to
+# build, and TritonCTS crashes on this design roughly 99 attempts in 100 unless
+# the patched OpenROAD is used (see docs/explanation/known-issues.md). Try
+# declaring it again on a newer OpenROAD.
 #
-# It is **intermittent, and rare: one success in roughly a hundred attempts**, and that is the
-# part that matters, because it makes every single-shot experiment worthless.
-# The proof is direct: one attempt passed, and re-running the very same step
-# later against the byte-identical resolved SDC that pass had emitted, from the
-# same placement database, failed. `separateMacroRegSinks` iterates an
-# `unordered_set<dbMaster*>`, keyed on pointers and therefore ordered
-# differently in every process, which is a plausible mechanism for the variance.
-#
-# Two consequences. The flow needs **retrying at this step**, the way `make pdk`
-# already retries magic (ticket 15):
-#
-#   until make harden ARGS="--last-run --from OpenROAD.CTS --to OpenROAD.CTS"; \
-#       do :; done
-#
-# And every "fix" anyone reports for it, including the ones below, has to be
-# assumed to be a lucky run until it survives twenty-plus attempts. Ticket 25
-# tried all of these and none of them changed the rate: adding or removing the
-# JTAG clock, adding or removing the divided clock, `set_clock_groups`, the
-# `jtag_tdo` output delay, and `CTS_SINK_CLUSTERING_ENABLE`,
-# `CTS_OBSTRUCTION_AWARE`, `CTS_DISABLE_POST_PROCESSING` and
-# `CTS_BALANCE_LEVELS`, singly and in combination. Memory is not the cause
-# either: 5.3 GB free at the low-water mark and nothing in the kernel log.
-#
-# The two clocks left out, and what each would be:
-#
-#   jtag_tck        create_clock on {inputs\[0\].pad/Y}, the first west input
-#                   pad, at $::env(CLOCK_PERIOD). It clocks the debug module's
-#                   TAP, which ticket 04 made the sole recovery path on a boot
-#                   CRC failure, so this is the one whose absence matters.
-#   ref_clk_div40   create_generated_clock -divide_by 40 off the output pin of
-#                   net `*apb_fll_if_i.ref_clk_o`, which is `gf180_clk_gen.sv`'s
-#                   `clkdv` output. Note the name: `clkdv`'s internal `clkout`
-#                   register folds away, because `assign clk_o = (CLK_DIV_VALUE
-#                   <= 1) ? clk_i : clkout` is a straight connection at the
-#                   constant divisor of 40.
-#
-# Both resolve correctly and OpenSTA reports them (100 ns and 4000 ns);
-# `CheckSDCFiles` and `STAPrePNR` accept either. They are out for now because
-# each extra clock is another tree for CTS to build and so another chance to hit
-# the crash, not because either is wrong. Declaring them is the first thing to
-# try again on a newer OpenROAD.
-#
-# What the two unconstrained domains lose is a *balanced* tree; they are still
-# buffered by `repair_design` as ordinary high-fanout nets. For the 250 kHz
-# divided clock that is close to immaterial, since skew that would be fatal
-# against a 100 ns period is nothing against 4000 ns and everything crossing
-# back goes through upstream's own synchronisers. For the TAP it is a real gap,
-# and it is why a gate-level JTAG timing result from this netlist should not be
-# trusted until the clock is constrained.
+# What the domain loses is a *balanced* tree; it is still buffered by
+# repair_design as an ordinary high-fanout net. At 125 kHz that is close to
+# immaterial, since skew that would matter against 200 ns is nothing against
+# 8000 ns, and everything crossing back goes through upstream's own
+# synchronisers.
 
 # --- Design rule and IO constraints -----------------------------------------
 
@@ -202,10 +154,9 @@ set_input_delay -max $input_delay_value -clock $clocks $clk_core_input_ports
 set_false_path -hold -from $clk_core_inout_ports
 set_false_path -hold -from [get_ports rst_n_PAD]
 
-# jtag_tdo is the one output outside the io array. With the TAP's own clock
-# undeclared (see above) it is constrained against the main clock, which is not
-# the clock that launches it; the constraint is here so the port is not left
-# unconstrained entirely, not because it is the right one.
+# jtag_tdo is the one output outside the io array. It is constrained against
+# the main clock rather than jtag_tck, which is not the clock that launches it;
+# the constraint is here so the port is not left unconstrained entirely.
 set jtag_tdo_port [get_ports -quiet jtag_tdo_PAD]
 if { [llength $jtag_tdo_port] } {
     set_output_delay $output_delay_value -clock $clocks $jtag_tdo_port

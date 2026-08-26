@@ -24,7 +24,7 @@ module chip_core #(
     inout  wire                      VSS,
 `endif
 
-    input  wire                      clk,        // ref_clk_i, 10 MHz (ticket 05)
+    input  wire                      clk,        // ref_clk_i, 5 MHz
     input  wire                      rst_n,      // asynchronous, synchronised inside safe_domain
 
     input  wire                      jtag_tck,

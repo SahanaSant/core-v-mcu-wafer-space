@@ -16,7 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Trimmed from core-v-mcu/a2_boot/spi.c to the single-SPI, boot-only subset
- * ticket 04 needs: open, the two reset commands, and a flash read. The
+ * boot needs: open, the two reset commands, and a flash read. The
  * uDMA microcode sequences themselves (the kSPIm_* opcode streams) are
  * unchanged, because they are proven working sequences for this exact IP
  * block, not board-specific code. udma_qspim_write/udma_flash_readid/
@@ -24,8 +24,8 @@
  *
  * One real fix: udma_qspim_open()'s clock divisor assumed a fixed 5 MHz
  * peripheral clock, which was that board's FLL-derived udma_ctrl clock.
- * Ticket 05 settled this design's clock architecture as ref_clk_i bypassed
- * undivided to periph_clk, so the divisor is now derived from that real
+ * This design bypasses ref_clk_i undivided to periph_clk, so the divisor is
+ * derived from that real
  * number rather than carried over. See PERIPH_CLK_HZ below.
  */
 
@@ -36,10 +36,9 @@
 #include "udma_qspi_reg_defs.h"
 #include "udma_qspi_driver.h"
 
-/* Ticket 05: soc_clk_o/periph_clk_o/cluster_clk_o are ref_clk_i, undivided.
- * Ticket 29 revised the external ref_clk_i target from 10 MHz to 6 MHz and
- * then to 5 MHz, the frequency at which post-route STA finally closes at the
- * slow corner. Keep this in step with flow/config.yaml's CLOCK_PERIOD,
+/* soc_clk_o/periph_clk_o/cluster_clk_o are ref_clk_i, undivided. 5 MHz is the
+ * frequency at which post-route STA closes at the slow corner. Keep this in
+ * step with flow/config.yaml's CLOCK_PERIOD,
  * sw/app/uart.c's PERIPH_CLK_HZ, and the two sim constants named there. */
 #define PERIPH_CLK_HZ 5000000u
 
