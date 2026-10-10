@@ -1,3 +1,3 @@
 [submodule "core-v-mcu"]
 	path = core-v-mcu
-	url = https://github.com/openhwgroup/core-v-mcu.git
+	url = https://github.com/schulich-on-a-chip/core-v-mcu.git
